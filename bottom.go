@@ -90,6 +90,7 @@ func printHash(a string, b map[int]ps.Process) {
 }
 
 func main () {
+    fmt.Println("Starting process watch")
     deets = map[int]string{}
     procs := getProcs()
     for {
