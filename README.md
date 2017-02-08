@@ -6,7 +6,7 @@ Top shows you programs that are currently running, but I needed to see which pro
 
 # Use
 
-   bottom
+    bottom
   
     bottom.exe
   
