@@ -6,9 +6,9 @@ Top shows you programs that are currently running, but I needed to see which pro
 
 # Use
 
-  bottom
+   bottom
   
-  bottom.exe
+    bottom.exe
   
 Run bottom, watch the screen.  Bottom will print out program names as they start and stop.
 
