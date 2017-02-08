@@ -1,6 +1,7 @@
 package main
 
 import "github.com/mitchellh/go-ps"
+import "runtime"
 import "strings"
 import "fmt"
 //import "os"
@@ -52,25 +53,32 @@ func doCommand(cmd string, args []string) string {
 func extendedPS(pid int) string {
     if runtime.GOOS == "windows" {
     } else {
-    #if runtime.GOOS == "darwin" {
-    #if runtime.GOOS == "linux" {
-        out := doCommand("ps", []string{ "-o", "command", "-p", fmt.Sprintf("%v",v.Pid())})
+    //if runtime.GOOS == "darwin" {
+    //if runtime.GOOS == "linux" {
+        out := doCommand("ps", []string{ "-o", "command", "-p", fmt.Sprintf("%v",pid)})
         return out
     }
+    return ""
+}
+
+func chomp(s string) string {
+    return strings.TrimSuffix(s, "\n")
 }
 
 func printHash(a string, b map[int]ps.Process) {
     for _, v := range b {
-        fmt.Printf("(%v %v)     ", a, v.Executable())
-        if a == "Start: " {
+        fmt.Printf("%8v %8v %-20v ", a, v.Pid(), v.Executable())
+        if a == "Start:" {
+            out := chomp(chomp(extendedPS(v.Pid())))
             out = strings.Replace(out, "  PID TTY           TIME CMD\n", "", -1)
             out = strings.Replace(out, "COMMAND\n", "", -1)
-            fmt.Println(out)
+            fmt.Printf("%v", out)
             deets[v.Pid()] = out
         }
-        if a == "Stop:  " {
-            fmt.Println(deets[v.Pid()])
+        if a == "Stop:" {
+            fmt.Printf("%v", deets[v.Pid()])
         }
+        fmt.Println("")
         /*
         Does nothing on OSX
         p, _ := os.FindProcess(v.Pid())
@@ -88,9 +96,9 @@ func main () {
         //time.Sleep(1 * time.Second)
         new := getProcs()
         diff := hashDiff(new, procs)
-        printHash("Start: ", diff)
+        printHash("Start:", diff)
         diff = hashDiff(procs, new)
-        printHash("Stop: ", diff)
+        printHash("Stop:", diff)
         procs = new
     }
 
