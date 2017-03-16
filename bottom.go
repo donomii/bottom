@@ -1,5 +1,6 @@
 package main
 
+//import "syscall"
 import "github.com/mitchellh/go-ps"
 import "runtime"
 import "strings"
@@ -43,15 +44,23 @@ func doCommand(cmd string, args []string) string {
         //fmt.Fprintf(os.Stderr, "Output: %v", string(out))
         //fmt.Fprintf(os.Stderr, "Error: %v", err)
         //os.Exit(1)
-    }  
+    }
     if string(out) != "" {
         //fmt.Fprintf(os.Stderr, "Output: %v\n\n", string(out))
-    }  
+    }
     return string(out)
 }
 
 func extendedPS(pid int) string {
     if runtime.GOOS == "windows" {
+        cmd := exec.Command("tasklist.exe", "/fo", "csv", "/nh")
+        //Only compiles on windows?
+        //cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+        out, err := cmd.Output()
+        if err != nil {
+            return ""
+        }
+        return string(out)
     } else {
     //if runtime.GOOS == "darwin" {
     //if runtime.GOOS == "linux" {
