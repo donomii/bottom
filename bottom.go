@@ -7,10 +7,16 @@ import "strings"
 import "fmt"
 //import "os"
 import "os/exec"
-//import "time"
+import "time"
 
 
 
+var deets map[int]string
+var summary map[string]int
+
+func count (s string) {
+	summary[s] = summary[s] + 1
+}
 
 func getProcs() map[int]ps.Process {
     procs, _ := ps.Processes()
@@ -21,7 +27,6 @@ func getProcs() map[int]ps.Process {
     return procHash
 }
 
-var deets map[int]string
 
 
 func hashDiff(a, b map[int]ps.Process) map[int]ps.Process {
@@ -77,6 +82,7 @@ func chomp(s string) string {
 func printHash(a string, b map[int]ps.Process) {
     for _, v := range b {
         fmt.Printf("%8v %8v %-20v ", a, v.Pid(), v.Executable())
+        count(v.Executable())
         if a == "Start:" {
             out := chomp(chomp(extendedPS(v.Pid())))
             out = strings.Replace(out, "  PID TTY           TIME CMD\n", "", -1)
@@ -98,10 +104,19 @@ func printHash(a string, b map[int]ps.Process) {
 
 }
 
+func summaryPrint() {
+	for {
+		time.Sleep(1 * time.Second)
+		fmt.Println("Summary\n", summary)
+	}
+}
+
 func main () {
     fmt.Println("Starting process watch")
     deets = map[int]string{}
+    summary = map[string]int{}
     procs := getProcs()
+    go summaryPrint()
     for {
         //time.Sleep(1 * time.Second)
         new := getProcs()
