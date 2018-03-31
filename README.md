@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/donomii/bottom.svg?branch=master)](https://travis-ci.org/donomii/bottom)
 # Bottom
 The opposite of top - show processes as they start and end
 
