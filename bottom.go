@@ -1,243 +1,165 @@
 package main
 
-//import "syscall"
 import (
+	"context"
 	"flag"
 	"fmt"
-	"github.com/donomii/goof"
-	"github.com/mitchellh/go-ps"
 	"log"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 )
 
-//import "os"
+type listFlag []string
 
-var deets map[int]string
-var summary map[string]int
-var badProgs = []string{}
-
-type psdeets struct {
-	Pid     int
-	Command string
+func (values *listFlag) String() string {
+	return strings.Join(*values, ",")
 }
 
-func count(s string) {
-	summary[s] = summary[s] + 1
-}
-
-func getProcs() map[int]ps.Process {
-	procs, _ := ps.Processes()
-	procHash := map[int]ps.Process{}
-	for _, v := range procs {
-		procHash[v.Pid()] = v
+func (values *listFlag) Set(value string) error {
+	if value == "" {
+		return fmt.Errorf("expected a non-empty filter value")
 	}
-	return procHash
+	*values = append(*values, value)
+	return nil
 }
 
-func hashDiff(a, b map[int]psdeets) map[int]psdeets {
-	retHash := map[int]psdeets{}
-	for k, v := range a {
-		if _, ok := b[k]; ok {
-			//fmt.Println("Key ", k, " present in both")
-			//do something here
-		} else {
-			//fmt.Println("Key ", k, " not present in both")
-			retHash[k] = v
-		}
+func parseConfig(args []string) (Config, error) {
+	config := Config{
+		Backend:        "auto",
+		Format:         FormatText,
+		OutputPath:     "",
+		PollInterval:   time.Second,
+		ChurnWindow:    10 * time.Second,
+		ChurnThreshold: 5,
+		Filter: Filter{
+			EventMode: EventModeBoth,
+		},
 	}
-	return retHash
+	var include listFlag
+	var exclude listFlag
+	format := string(config.Format)
+	flagset := flag.NewFlagSet("bottom", flag.ContinueOnError)
+	flagset.StringVar(&config.Backend, "backend", config.Backend, "process source: auto, poll, linux-proc-connector, linux-ebpf, windows-wmi, macos-endpoint-security")
+	flagset.Var(&include, "include", "show events whose command, executable path, current directory, user, or parent chain contains this text; may be repeated")
+	flagset.Var(&exclude, "exclude", "hide events whose command, executable path, current directory, user, or parent chain contains this text; may be repeated")
+	flagset.StringVar(&config.Filter.User, "user", "", "show events owned by this user name or numeric id")
+	flagset.StringVar(&config.Filter.CwdContains, "cwd", "", "show events whose current directory contains this text")
+	flagset.StringVar(&config.Filter.ExeContains, "exe", "", "show events whose executable path contains this text")
+	flagset.IntVar(&config.Filter.ParentPID, "ppid", 0, "show events whose immediate parent process has this pid")
+	flagset.StringVar(&config.Filter.EventMode, "events", config.Filter.EventMode, "event kinds to show: start, stop, churn, gap, or both")
+	flagset.DurationVar(&config.Filter.MinDuration, "min-duration", 0, "show stop events only when the process lived at least this long")
+	flagset.DurationVar(&config.Filter.MaxDuration, "max-duration", 0, "show stop events only when the process lived no longer than this")
+	flagset.DurationVar(&config.PollInterval, "poll", config.PollInterval, "polling interval used by the polling backend and fallback mode")
+	flagset.StringVar(&format, "format", format, "output format: text, jsonl, csv, or sqlite")
+	flagset.StringVar(&config.OutputPath, "output", config.OutputPath, "output file path for csv, jsonl, or sqlite; empty writes text, csv, and jsonl to stdout")
+	flagset.BoolVar(&config.TUI, "tui", false, "show a live terminal timeline with recent events and process churn counts")
+	flagset.DurationVar(&config.ChurnWindow, "churn-window", config.ChurnWindow, "time window used to group repeated short-lived command starts")
+	flagset.IntVar(&config.ChurnThreshold, "churn-threshold", config.ChurnThreshold, "number of starts inside the churn window before bottom reports a churn event")
+	flagset.BoolVar(&config.RunSelfTest, "test", false, "run built-in checks for filtering, recorders, churn detection, and snapshot diffing")
+	flagset.Usage = func() {
+		fmt.Fprintf(flagset.Output(), "Usage: bottom [options]\n\n")
+		fmt.Fprintf(flagset.Output(), "bottom records process start and stop events. With no options it prints text to stdout.\n\n")
+		flagset.PrintDefaults()
+	}
+	if err := flagset.Parse(args); err != nil {
+		return Config{}, err
+	}
+	config.Filter.Include = []string(include)
+	config.Filter.Exclude = []string(exclude)
+	config.Format = OutputFormat(format)
+	if config.PollInterval <= 0 {
+		return Config{}, fmt.Errorf("poll interval must be positive, received %s", config.PollInterval)
+	}
+	if config.ChurnWindow <= 0 {
+		return Config{}, fmt.Errorf("churn window must be positive, received %s", config.ChurnWindow)
+	}
+	if config.ChurnThreshold <= 0 {
+		return Config{}, fmt.Errorf("churn threshold must be positive, received %d", config.ChurnThreshold)
+	}
+	if !validEventMode(config.Filter.EventMode) {
+		return Config{}, fmt.Errorf("events must be start, stop, churn, gap, or both, received %q", config.Filter.EventMode)
+	}
+	if !validOutputFormat(config.Format) {
+		return Config{}, fmt.Errorf("format must be text, jsonl, csv, or sqlite, received %q", config.Format)
+	}
+	if config.Format == FormatSQLite && config.OutputPath == "" {
+		config.OutputPath = "bottom.sqlite"
+	}
+	return config, nil
 }
 
-func doCommand(cmd string, args []string) string {
-	out, err := exec.Command(cmd, args...).CombinedOutput()
+func run(config Config, logger *log.Logger) (runErr error) {
+	if config.RunSelfTest {
+		return runSelfTest()
+	}
+	recorder, err := newRecorder(config)
 	if err != nil {
-		//fmt.Fprintf(os.Stderr, "Output: %v", string(out))
-		//fmt.Fprintf(os.Stderr, "Error: %v", err)
-		//os.Exit(1)
+		return err
 	}
-	if string(out) != "" {
-		//fmt.Fprintf(os.Stderr, "Output: %v\n\n", string(out))
-	}
-	return string(out)
-}
-
-func extendedPS(pid int) string {
-	if runtime.GOOS == "windows" {
-		cmd := exec.Command("tasklist.exe", "/fo", "csv", "/nh")
-		//Only compiles on windows?
-		//cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		out, err := cmd.Output()
-		if err != nil {
-			return ""
+	defer func() {
+		if err := recorder.Close(); runErr == nil && err != nil {
+			runErr = err
 		}
-		return string(out)
-	} else {
-		//if runtime.GOOS == "darwin" {
-		//if runtime.GOOS == "linux" {
-		out := doCommand("ps", []string{"-o", "command", "-p", fmt.Sprintf("%v", pid)})
-		return out
-	}
-	return ""
-}
-
-func simplePSUnix() map[int]psdeets {
-	outstr := goof.Shell("ps -eo pid,command")
-	lines := strings.Split(outstr, "\n")
-	out := map[int]psdeets{}
-	//Iterate over lines, split on spaces
-	for _, line := range lines {
-		parts := strings.SplitN(line, " ", 2)
-		if len(parts) > 1 {
-			p := psdeets{Pid: goof.Atoi(parts[0]), Command: parts[1]}
-			out[p.Pid] = p
+	}()
+	backend, fallbackAllowed, err := selectBackend(config)
+	if err != nil {
+		if fallbackAllowed {
+			logBackendFallback(logger, config.Backend, err)
+			backend = NewPollingBackend(config.PollInterval)
+		} else {
+			return err
 		}
 	}
-	return out
-}
-
-func simpleLsofUnix() map[int]psdeets {
-	outstr := goof.Shell("lsof -n -Fn")
-	lines := strings.Split(outstr, "\n")
-	out := map[int]psdeets{}
-	pos := 0
-	//Iterate over lines, read into a hash of hashes, keyed by pid
+	churn := NewChurnDetector(config.ChurnWindow, config.ChurnThreshold)
+	events := make(chan Event, 256)
+	errors := make(chan error, 1)
+	ctx := context.Background()
+	startBackend(ctx, backend, events, errors)
 	for {
-		if pos >= len(lines) {
-			break
-		}
-		line := lines[pos]
-		procHash := map[string]string{}
-		if strings.HasPrefix(line, "p") {
-			line = strings.TrimPrefix(line, "p")
-			pid := goof.Atoi(line)
-			for {
-				pos++
-				if pos >= len(lines) {
-					break
-				}
-				line = lines[pos]
-				if strings.HasPrefix(line, "p") {
-					break
-				}
-				if strings.HasPrefix(line, "f") {
-					fieldname := strings.TrimPrefix(line, "f")
-					pos++
-					val := lines[pos]
-					val = strings.TrimPrefix(val, "n")
-					//If fieldname is not in the hash already, add it
-					if _, ok := procHash[fieldname]; !ok {
-						procHash[fieldname] = val
-					}
+		select {
+		case event := <-events:
+			if config.Filter.Accepts(event) {
+				if err := recorder.Write(event); err != nil {
+					return err
 				}
 			}
-			out[pid] = psdeets{Pid: pid, Command: procHash["txt"]}
-		}
-		pos++
-	}
-	return out
-}
-
-func chomp(s string) string {
-	return strings.TrimSuffix(s, "\n")
-}
-
-func printHash(a string, b map[int]psdeets) {
-	for pid, v := range b {
-		if v.Command == "ps" || strings.Contains(v.Command, " ps ") || strings.Contains(v.Command, "\tps\t") {
-			fmt.Println("")
-			continue
-		}
-		//fmt.Printf("%8v %8v %-20v ", a, v.Pid, v.Command)
-		count(v.Command)
-
-		if a == "Start:" {
-			//out := chomp(chomp(extendedPS(v.Pid)))
-			out := v.Command
-			out = strings.Replace(out, "  PID TTY           TIME CMD\n", "", -1)
-			out = strings.Replace(out, "COMMAND\n", "", -1)
-			out = fmt.Sprintf("%v: %v", pid, out)
-			if strings.Contains(out, "ps -eo pid,command") {
-				continue
+			if churnEvent, ok := churn.Observe(event); ok && config.Filter.Accepts(churnEvent) {
+				if err := recorder.Write(churnEvent); err != nil {
+					return err
+				}
 			}
-			fmt.Printf("Start: %v\n", out)
-			deets[v.Pid] = out
-		}
-		if a == "Stop:" {
-			if strings.Contains(v.Command, "ps -eo pid,command") {
-				continue
+		case err := <-errors:
+			if err == nil {
+				return nil
 			}
-			fmt.Printf("Stop: %v\n", deets[v.Pid])
+			if fallbackAllowed && backend.Name() != BackendPoll {
+				logBackendFallback(logger, backend.Name(), err)
+				backend = NewPollingBackend(config.PollInterval)
+				fallbackAllowed = false
+				startBackend(ctx, backend, events, errors)
+			} else {
+				return err
+			}
 		}
-		//fmt.Println("")
-		/*
-		   Does nothing on OSX
-		   p, _ := os.FindProcess(v.Pid())
-		   fmt.Println(p)
-		*/
-
 	}
-
 }
 
-func summaryPrint() {
-	for {
-		time.Sleep(1 * time.Second)
-		fmt.Println("Summary\n", summary)
-	}
+func startBackend(ctx context.Context, backend LifecycleBackend, events chan<- Event, errors chan<- error) {
+	go func() {
+		errors <- backend.Watch(ctx, events)
+	}()
 }
 
 func main() {
-	fmt.Println("Starting process watch")
-	flag.Parse()
-	badProgs = flag.Args()
-	deets = map[int]string{}
-	summary = map[string]int{}
-	procs := simplePSUnix()
-
-	//go summaryPrint()
-	for {
-		time.Sleep(1 * time.Second)
-
-		//Detect new processes
-		new := simplePSUnix()
-		diff := hashDiff(new, procs)
-		printHash("Start:", diff)
-		//Detect dead processes
-		diff = hashDiff(procs, new)
-		printHash("Stop:", diff)
-		procs = new
-
-		//Search process list for bad programs.  Use the real path to the program
-		//to catch programs that modify their command line
-		pr := simpleLsofUnix()
-		ownPid := os.Getpid()
-		//Iterate over procs
-		for _, p := range pr {
-			if p.Pid == ownPid {
-				continue
-			}
-			for _, bad := range badProgs {
-				//log.Printf("Comparing %v to %v\n", bad, p.Command)
-				if strings.Contains(p.Command, bad) {
-					go func(p psdeets) {
-						log.Printf("Found bad program %v, killing it: (%v)%v\n", bad, p.Pid, p.Command)
-						goof.Shell(fmt.Sprintf("kill -1 %v", p.Pid))
-						time.Sleep(1 * time.Second)
-						goof.Shell(fmt.Sprintf("kill -15 %v", p.Pid))
-						time.Sleep(1 * time.Second)
-						goof.Shell(fmt.Sprintf("kill -9 %v", p.Pid))
-						time.Sleep(1 * time.Second)
-						goof.Shell(fmt.Sprintf("kill -11 %v", p.Pid))
-
-					}(p)
-
-				}
-			}
-		}
+	config, err := parseConfig(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bottom: %v\n", err)
+		os.Exit(2)
 	}
-
+	logger := log.New(os.Stderr, "bottom: ", log.LstdFlags)
+	if err := run(config, logger); err != nil {
+		fmt.Fprintf(os.Stderr, "bottom: %v\n", err)
+		os.Exit(1)
+	}
 }
