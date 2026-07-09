@@ -2,26 +2,15 @@
 
 [![Test](https://github.com/donomii/bottom/actions/workflows/test.yml/badge.svg)](https://github.com/donomii/bottom/actions/workflows/test.yml)
 
-Bottom is the opposite of top: top shows what is alive right now, while bottom records what started, stopped, churned, or disappeared between snapshots.
+Bottom is the opposite of top: top shows what is alive right now, while bottom records what started, or stopped.
 
 ![bottom demo](docs/demo.gif)
-
-Bottom is for answering questions like:
-
-- What short-lived command just ran?
-- Which process is restarting over and over?
-- What parent process launched this child?
-- Which user, executable path, or working directory is involved?
-
-This repository is `donomii/bottom`, a process lifecycle recorder. It is not the unrelated full system monitor at https://github.com/ClementTsang/bottom.
 
 ## Run
 
 ```sh
 ./run.sh
 ```
-
-The launcher starts bottom with sensible defaults: automatic backend selection, one-second polling fallback, text output, and start/stop/churn/gap events printed to stdout.
 
 ## Build, Test, Demo, Install
 
@@ -32,11 +21,10 @@ The launcher starts bottom with sensible defaults: automatic backend selection, 
 ./install.sh
 ```
 
-`build.sh` builds a local `bottom` binary. `test.sh` runs Go tests and the built-in `-test` checks. `demo.sh` runs the built-in checks and prints a copyable demo command. `install.sh` installs the command through `go install`.
+ `install.sh` installs the command through `go install`.
 
 ## Options
 
-Every option has a default and can be edited directly in `bottom.go`.
 
 - `-backend auto`: chooses the best available event backend and falls back to polling. Values are `auto`, `poll`, `linux-proc-connector`, `linux-ebpf`, `windows-wmi`, and `macos-endpoint-security`.
 - `-poll 1s`: sets the polling interval used by the polling backend and fallback mode.
