@@ -4,6 +4,9 @@
 
 - Replaced shell-helper polling with a read-only process lifecycle recorder.
 - Added backend selection with Linux process connector support and polling fallback.
+- Set the default polling fallback to 100ms and documented millisecond poll intervals.
+- Moved backend and snapshot diagnostics out of the recorded event output.
+- Removed unimplemented backend names from the selectable backend list.
 - Added text, JSONL, CSV, SQLite, and TUI outputs.
 - Added filters for event kind, user, parent pid, current directory, executable path, duration, include text, and exclude text.
 - Added churn detection for repeated command starts.

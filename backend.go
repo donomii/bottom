@@ -20,13 +20,13 @@ func selectBackend(config Config) (LifecycleBackend, bool, error) {
 		return backend, true, nil
 	case BackendPoll:
 		return NewPollingBackend(config.PollInterval), false, nil
-	case BackendLinuxProcConnector, BackendLinuxEBPF, BackendWindowsWMI, BackendMacOSEndpointSecurity:
+	case BackendLinuxProcConnector:
 		backend, err := NewNamedEventBackend(config)
 		if err != nil {
 			return nil, false, err
 		}
 		return backend, false, nil
 	default:
-		return nil, false, fmt.Errorf("backend must be auto, poll, linux-proc-connector, linux-ebpf, windows-wmi, or macos-endpoint-security, received %q", config.Backend)
+		return nil, false, fmt.Errorf("backend must be auto, poll, or linux-proc-connector, received %q", config.Backend)
 	}
 }

@@ -64,9 +64,6 @@ func tuiEventLine(event Event) string {
 		user = "-"
 	}
 	command := event.Command
-	if event.Kind == EventGap {
-		command = event.Message
-	}
 	if event.Kind == EventChurn {
 		command = fmt.Sprintf("%s (%d starts in %s)", event.Command, event.Count, time.Duration(event.WindowMillis)*time.Millisecond)
 	}

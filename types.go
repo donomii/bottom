@@ -3,12 +3,9 @@ package main
 import "time"
 
 const (
-	BackendAuto                  = "auto"
-	BackendPoll                  = "poll"
-	BackendLinuxProcConnector    = "linux-proc-connector"
-	BackendLinuxEBPF             = "linux-ebpf"
-	BackendWindowsWMI            = "windows-wmi"
-	BackendMacOSEndpointSecurity = "macos-endpoint-security"
+	BackendAuto               = "auto"
+	BackendPoll               = "poll"
+	BackendLinuxProcConnector = "linux-proc-connector"
 )
 
 const (
@@ -98,7 +95,7 @@ type Filter struct {
 
 func validEventMode(mode string) bool {
 	switch mode {
-	case string(EventStart), string(EventStop), string(EventChurn), string(EventGap), EventModeBoth:
+	case string(EventStart), string(EventStop), string(EventChurn), EventModeBoth:
 		return true
 	default:
 		return false

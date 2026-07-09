@@ -19,6 +19,6 @@ Thanks for helping with bottom.
 
 ## Useful Starting Points
 
-- Add packaged event backends for Linux eBPF, Windows WMI event subscriptions, or signed macOS Endpoint Security builds.
+- Add native event backends for platforms that only have polling today.
 - Improve process identity on platforms that do not expose a stable start token.
 - Add package recipes after release binaries exist.

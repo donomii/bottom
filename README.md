@@ -26,14 +26,14 @@ Bottom is the opposite of top: top shows what is alive right now, while bottom r
 ## Options
 
 
-- `-backend auto`: chooses the best available event backend and falls back to polling. Values are `auto`, `poll`, `linux-proc-connector`, `linux-ebpf`, `windows-wmi`, and `macos-endpoint-security`.
-- `-poll 1s`: sets the polling interval used by the polling backend and fallback mode.
+- `-backend auto`: chooses the best available backend. Values are `auto`, `poll`, and `linux-proc-connector`.
+- `-poll 100ms`: sets the polling interval used by the polling backend and fallback mode. Go duration values are accepted, including `25ms`, `100ms`, `500ms`, and `1s`.
 - `-format text`: writes `text`, `jsonl`, `csv`, or `sqlite`.
 - `-output PATH`: writes output to a file. Empty output writes text, JSONL, and CSV to stdout. SQLite defaults to `bottom.sqlite`.
 - `-tui`: shows a live terminal timeline with recent events and top churners.
 - `-include TEXT`: shows only events whose command, executable path, current directory, user, pid, parent pid, or parent chain contains the text. Repeat it to match more terms.
 - `-exclude TEXT`: hides events matching the text. Repeat it to hide more terms.
-- `-events both`: shows `start`, `stop`, `churn`, `gap`, or `both`.
+- `-events both`: shows `start`, `stop`, `churn`, or `both`.
 - `-user USER`: shows events owned by one user name or numeric id.
 - `-ppid PID`: shows events whose immediate parent process has this pid.
 - `-cwd TEXT`: shows events whose current directory contains the text.
@@ -52,22 +52,19 @@ Text output uses one line per event:
 12:00:01.123 start pid=421 ppid=22 user=jer cmd="compiler --input main.go" parent=22:shell
 12:00:02.456 stop  pid=421 duration=83ms exit= cmd="compiler --input main.go"
 12:00:03.000 churn count=5 window=10s cmd="compiler --input main.go"
-12:00:04.000 gap   backend=poll message="process snapshot failed; expected a complete process table, received error ..."
 ```
 
 - `start` means a process appeared.
 - `stop` means a process disappeared; duration is measured from the best available start time or first observation time.
 - `churn` means the same command started repeatedly inside the churn window.
-- `gap` means bottom detected a backend or snapshot problem and resynced when possible.
 - `parent` shows the parent chain from immediate parent upward.
 
 ## Backend Notes
 
 - Linux `auto` prefers `linux-proc-connector`, which subscribes to kernel process connector events and refreshes the process snapshot on each event.
 - Linux `poll` reads `/proc` directly and avoids shell helpers.
-- macOS and other Unix polling uses `ps` because Endpoint Security requires a signed entitled build.
+- macOS and other Unix polling uses `ps`.
 - Windows polling uses WMI command output for process snapshots.
-- `linux-ebpf`, `windows-wmi`, and `macos-endpoint-security` are explicit backend names so packaging can grow into those event sources without changing the CLI.
 
 ## Output Formats
 

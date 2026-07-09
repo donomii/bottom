@@ -41,12 +41,6 @@ func NewNamedEventBackend(config Config) (LifecycleBackend, error) {
 	switch config.Backend {
 	case BackendLinuxProcConnector:
 		return LinuxProcConnectorBackend{interval: config.PollInterval}, nil
-	case BackendLinuxEBPF:
-		return nil, fmt.Errorf("linux-ebpf backend is documented but not bundled in this build; expected linux-proc-connector or poll")
-	case BackendWindowsWMI:
-		return nil, fmt.Errorf("windows-wmi backend is only available in Windows builds; this build target is linux")
-	case BackendMacOSEndpointSecurity:
-		return nil, fmt.Errorf("macos-endpoint-security backend is only available in macOS builds; this build target is linux")
 	default:
 		return nil, fmt.Errorf("unknown event backend %q", config.Backend)
 	}

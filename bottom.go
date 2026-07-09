@@ -29,7 +29,7 @@ func parseConfig(args []string) (Config, error) {
 		Backend:        "auto",
 		Format:         FormatText,
 		OutputPath:     "",
-		PollInterval:   time.Second,
+		PollInterval:   100 * time.Millisecond,
 		ChurnWindow:    10 * time.Second,
 		ChurnThreshold: 5,
 		Filter: Filter{
@@ -40,14 +40,14 @@ func parseConfig(args []string) (Config, error) {
 	var exclude listFlag
 	format := string(config.Format)
 	flagset := flag.NewFlagSet("bottom", flag.ContinueOnError)
-	flagset.StringVar(&config.Backend, "backend", config.Backend, "process source: auto, poll, linux-proc-connector, linux-ebpf, windows-wmi, macos-endpoint-security")
+	flagset.StringVar(&config.Backend, "backend", config.Backend, "process source: auto, poll, or linux-proc-connector")
 	flagset.Var(&include, "include", "show events whose command, executable path, current directory, user, or parent chain contains this text; may be repeated")
 	flagset.Var(&exclude, "exclude", "hide events whose command, executable path, current directory, user, or parent chain contains this text; may be repeated")
 	flagset.StringVar(&config.Filter.User, "user", "", "show events owned by this user name or numeric id")
 	flagset.StringVar(&config.Filter.CwdContains, "cwd", "", "show events whose current directory contains this text")
 	flagset.StringVar(&config.Filter.ExeContains, "exe", "", "show events whose executable path contains this text")
 	flagset.IntVar(&config.Filter.ParentPID, "ppid", 0, "show events whose immediate parent process has this pid")
-	flagset.StringVar(&config.Filter.EventMode, "events", config.Filter.EventMode, "event kinds to show: start, stop, churn, gap, or both")
+	flagset.StringVar(&config.Filter.EventMode, "events", config.Filter.EventMode, "event kinds to show: start, stop, churn, or both")
 	flagset.DurationVar(&config.Filter.MinDuration, "min-duration", 0, "show stop events only when the process lived at least this long")
 	flagset.DurationVar(&config.Filter.MaxDuration, "max-duration", 0, "show stop events only when the process lived no longer than this")
 	flagset.DurationVar(&config.PollInterval, "poll", config.PollInterval, "polling interval used by the polling backend and fallback mode")
@@ -78,7 +78,7 @@ func parseConfig(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("churn threshold must be positive, received %d", config.ChurnThreshold)
 	}
 	if !validEventMode(config.Filter.EventMode) {
-		return Config{}, fmt.Errorf("events must be start, stop, churn, gap, or both, received %q", config.Filter.EventMode)
+		return Config{}, fmt.Errorf("events must be start, stop, churn, or both, received %q", config.Filter.EventMode)
 	}
 	if !validOutputFormat(config.Format) {
 		return Config{}, fmt.Errorf("format must be text, jsonl, csv, or sqlite, received %q", config.Format)
@@ -119,6 +119,10 @@ func run(config Config, logger *log.Logger) (runErr error) {
 	for {
 		select {
 		case event := <-events:
+			if event.Kind == EventGap {
+				logBackendDiagnostic(logger, event)
+				continue
+			}
 			if config.Filter.Accepts(event) {
 				if err := recorder.Write(event); err != nil {
 					return err

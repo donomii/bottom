@@ -111,8 +111,6 @@ func formatTextEvent(event Event) string {
 		return fmt.Sprintf("%s pid=%d duration=%s exit=%s cmd=%q", prefix, event.PID, time.Duration(event.DurationMillis)*time.Millisecond, formatExitCode(event.ExitCode), event.Command)
 	case EventChurn:
 		return fmt.Sprintf("%s count=%d window=%s cmd=%q", prefix, event.Count, time.Duration(event.WindowMillis)*time.Millisecond, event.Command)
-	case EventGap:
-		return fmt.Sprintf("%s backend=%s message=%q", prefix, event.Backend, event.Message)
 	default:
 		return fmt.Sprintf("%s message=%q", prefix, event.Message)
 	}

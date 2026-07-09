@@ -2,7 +2,7 @@
 
 ## Summary
 
-Bottom records process lifecycle changes. It reports process start events, process stop events, repeated-start churn events, and backend gap events.
+Bottom records process lifecycle changes. It reports process start events, process stop events, and repeated-start churn events.
 
 ## User Interactions
 
@@ -11,9 +11,9 @@ The user runs `bottom` or `./run.sh`.
 With no options, bottom:
 
 - selects `-backend auto`;
-- uses a one-second polling fallback;
+- uses a 100ms polling fallback;
 - prints text events to stdout;
-- reports start, stop, churn, and gap events;
+- reports start, stop, and churn events;
 - keeps running until the user exits the process from the terminal.
 
 The user runs `bottom -test` to execute built-in checks and exit.
@@ -29,12 +29,9 @@ The user runs `bottom -tui` to see a live terminal screen containing:
 
 - `auto`: use the best available event backend, falling back to polling;
 - `poll`: use snapshot polling only;
-- `linux-proc-connector`: subscribe to Linux process connector events;
-- `linux-ebpf`: reserved backend name for Linux tracepoint packaging;
-- `windows-wmi`: reserved backend name for Windows event packaging;
-- `macos-endpoint-security`: reserved backend name for signed macOS Endpoint Security packaging.
+- `linux-proc-connector`: subscribe to Linux process connector events.
 
-`-poll` sets the polling interval.
+`-poll` sets the polling interval. Values use Go duration syntax, including milliseconds such as `25ms`, `100ms`, and `500ms`.
 
 `-format` selects output: `text`, `jsonl`, `csv`, or `sqlite`.
 
@@ -44,7 +41,7 @@ The user runs `bottom -tui` to see a live terminal screen containing:
 
 `-exclude` removes events whose searchable fields contain the text.
 
-`-events` keeps `start`, `stop`, `churn`, `gap`, or `both`.
+`-events` keeps `start`, `stop`, `churn`, or `both`.
 
 `-user`, `-ppid`, `-cwd`, and `-exe` filter by owner, immediate parent pid, current directory text, and executable path text.
 
@@ -68,7 +65,7 @@ Process:
 
 Event:
 
-- `kind`: `start`, `stop`, `churn`, or `gap`;
+- `kind`: `start`, `stop`, or `churn`;
 - `time`: event timestamp;
 - `pid`: process id when the event is process-specific;
 - `parent_pid`: immediate parent process id;
@@ -81,7 +78,7 @@ Event:
 - `backend`: backend that produced the event;
 - `count`: repeated-start count for churn events;
 - `window_ms`: churn window size for churn events;
-- `message`: diagnostic text for churn and gap events;
+- `message`: diagnostic text for churn events;
 - `parent_chain`: parent process summaries from immediate parent upward.
 
 ## Process Snapshot Algorithm
@@ -142,4 +139,4 @@ Invalid CLI values stop startup with an error naming the expected value and rece
 
 Backend failures in `auto` mode are logged and replaced with polling.
 
-Snapshot failures emit a `gap` event and continue on the next interval or backend signal.
+Snapshot failures are logged to stderr and bottom continues on the next interval or backend signal.

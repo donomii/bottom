@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,5 +88,49 @@ func TestTextRecorderWritesCommand(t *testing.T) {
 	}
 	if output.String() == "" {
 		t.Fatalf("expected text output")
+	}
+}
+
+func TestParseConfigUsesMillisecondPolling(t *testing.T) {
+	config, err := parseConfig(nil)
+	if err != nil {
+		t.Fatalf("parse default config: %v", err)
+	}
+	if config.PollInterval != 100*time.Millisecond {
+		t.Fatalf("expected default poll interval 100ms, received %s", config.PollInterval)
+	}
+	config, err = parseConfig([]string{"-poll", "25ms"})
+	if err != nil {
+		t.Fatalf("parse millisecond poll config: %v", err)
+	}
+	if config.PollInterval != 25*time.Millisecond {
+		t.Fatalf("expected poll interval 25ms, received %s", config.PollInterval)
+	}
+}
+
+func TestParseConfigRejectsGapEvents(t *testing.T) {
+	if _, err := parseConfig([]string{"-events", "gap"}); err == nil {
+		t.Fatalf("expected gap event mode to be rejected")
+	}
+}
+
+func TestSelectBackendRejectsPlaceholderNames(t *testing.T) {
+	placeholderNames := []string{"linux-ebpf", "windows-wmi", "macos-endpoint-security"}
+	for _, name := range placeholderNames {
+		_, _, err := selectBackend(Config{Backend: name, PollInterval: time.Millisecond})
+		if err == nil {
+			t.Fatalf("expected backend %q to be rejected", name)
+		}
+		if !strings.Contains(err.Error(), "auto, poll, or linux-proc-connector") {
+			t.Fatalf("expected backend error to list real choices, received %q", err.Error())
+		}
+	}
+}
+
+func TestStopTextIncludesCommand(t *testing.T) {
+	event := Event{Kind: EventStop, Time: time.Unix(1, 0), PID: 9, Command: "sample-worker", DurationMillis: 83, Backend: BackendPoll}
+	line := formatTextEvent(event)
+	if !strings.Contains(line, `cmd="sample-worker"`) {
+		t.Fatalf("expected stop text to include command, received %q", line)
 	}
 }
