@@ -27,12 +27,12 @@ Bottom is the opposite of top: top shows what is alive right now, while bottom r
 
 
 - `-backend auto`: chooses the best available backend. Values are `auto`, `poll`, and `linux-proc-connector`.
-- `-poll 100ms`: sets the polling interval used by the polling backend and fallback mode. Go duration values are accepted, including `25ms`, `100ms`, `500ms`, and `1s`.
+- `-poll 100ms`: sets the polling interval used by the polling backend and fallback mode. 
 - `-format text`: writes `text`, `jsonl`, `csv`, or `sqlite`.
 - `-output PATH`: writes output to a file. Empty output writes text, JSONL, and CSV to stdout. SQLite defaults to `bottom.sqlite`.
 - `-tui`: shows a live terminal timeline with recent events and top churners.
-- `-include TEXT`: shows only events whose command, executable path, current directory, user, pid, parent pid, or parent chain contains the text. Repeat it to match more terms.
-- `-exclude TEXT`: hides events matching the text. Repeat it to hide more terms.
+- `-include TEXT`: shows only events that contains the text. 
+- `-exclude TEXT`: hides events matching the text. 
 - `-events both`: shows `start`, `stop`, `churn`, or `both`.
 - `-user USER`: shows events owned by one user name or numeric id.
 - `-ppid PID`: shows events whose immediate parent process has this pid.
@@ -65,7 +65,3 @@ Text output uses one line per event:
 - Linux `poll` reads `/proc` directly and avoids shell helpers.
 - macOS and other Unix polling uses `ps`.
 - Windows polling uses WMI command output for process snapshots.
-
-## Output Formats
-
-JSONL writes one JSON object per event. CSV writes a header plus one row per event. SQLite creates an `events` table with time, kind, pid, parent pid, user, command, executable path, current directory, duration, exit code, backend, churn count, churn window, message, and parent chain.
