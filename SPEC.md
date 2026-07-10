@@ -203,7 +203,7 @@ Periodic resynchronization occurs between 1 and 30 seconds depending on the poll
 
 - Linux reads `/proc` directly.
 - macOS uses native kernel process tables and native process-argument queries.
-- Windows uses native Tool Help snapshots, process handles, executable-path queries, creation times, session identifiers, and process-token owner SIDs. The SID is available immediately and background account-name resolution replaces it when the account can be resolved. Protected processes whose creation time cannot be read use a PID-only identity, so PID reuse can reduce lifecycle precision for those entries.
+- Windows uses native Tool Help snapshots, process handles, command-line and executable-path queries, creation times, session identifiers, and process-token owner SIDs. Native command-line capture falls back to the executable name when access is unavailable. The SID is available immediately and background account-name resolution replaces it when the account can be resolved. Protected processes whose creation time cannot be read use a PID-only identity, so PID reuse can reduce lifecycle precision for those entries.
 - Other Unix systems use a `ps` fallback with PID-only identity, so PID reuse can reduce lifecycle precision.
 
 User-name resolution occurs in a dedicated background resolver. The snapshot path returns a numeric UID or Windows SID immediately until a cached name is available.

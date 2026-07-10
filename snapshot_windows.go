@@ -12,6 +12,16 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const maxWindowsCommandLineBytes = 128 * 1024
+
+type windowsProcessDetails struct {
+	command   string
+	exe       string
+	startedAt time.Time
+	user      string
+	uid       string
+}
+
 func ReadProcessSnapshot() (ProcessSnapshot, error) {
 	handle, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
@@ -42,16 +52,22 @@ func windowsSnapshotProcess(entry windows.ProcessEntry32, capturedAt time.Time) 
 	pid := int(entry.ProcessID)
 	parentPID := int(entry.ParentProcessID)
 	command := windows.UTF16ToString(entry.ExeFile[:])
-	exe, startedAt, user, uid := readWindowsProcessDetails(entry.ProcessID)
+	details := readWindowsProcessDetails(entry.ProcessID)
+	if details.command != "" {
+		command = details.command
+	}
+	exe := details.exe
 	if exe == "" {
-		exe = command
+		exe = windows.UTF16ToString(entry.ExeFile[:])
 	}
 	startToken := ""
-	if !startedAt.IsZero() {
-		startToken = strconv.FormatInt(startedAt.UnixNano(), 10)
+	if !details.startedAt.IsZero() {
+		startToken = strconv.FormatInt(details.startedAt.UnixNano(), 10)
 	}
-	proc := capturedProcess(processID(pid, startToken), pid, parentPID, command, exe, "", user, startedAt, capturedAt)
-	proc.UID = uid
+	proc := capturedProcess(
+		processID(pid, startToken), pid, parentPID, command, exe, "", details.user, details.startedAt, capturedAt,
+	)
+	proc.UID = details.uid
 	var sessionID uint32
 	if windows.ProcessIdToSessionId(entry.ProcessID, &sessionID) == nil {
 		proc.Session = strconv.FormatUint(uint64(sessionID), 10)
@@ -59,27 +75,54 @@ func windowsSnapshotProcess(entry windows.ProcessEntry32, capturedAt time.Time) 
 	return proc
 }
 
-func readWindowsProcessDetails(pid uint32) (string, time.Time, string, string) {
+func readWindowsProcessDetails(pid uint32) windowsProcessDetails {
+	details := windowsProcessDetails{}
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
-		return "", time.Time{}, "", ""
+		return details
 	}
 	defer windows.CloseHandle(handle)
 	pathBuffer := make([]uint16, 32768)
 	pathSize := uint32(len(pathBuffer))
-	exe := ""
 	if windows.QueryFullProcessImageName(handle, 0, &pathBuffer[0], &pathSize) == nil {
-		exe = windows.UTF16ToString(pathBuffer[:pathSize])
+		details.exe = windows.UTF16ToString(pathBuffer[:pathSize])
 	}
-	user, uid := readWindowsProcessOwner(handle)
+	details.command = readWindowsProcessCommandLine(handle)
+	details.user, details.uid = readWindowsProcessOwner(handle)
 	var creation windows.Filetime
 	var exit windows.Filetime
 	var kernel windows.Filetime
 	var userTime windows.Filetime
 	if windows.GetProcessTimes(handle, &creation, &exit, &kernel, &userTime) != nil {
-		return exe, time.Time{}, user, uid
+		return details
 	}
-	return exe, time.Unix(0, creation.Nanoseconds()), user, uid
+	details.startedAt = time.Unix(0, creation.Nanoseconds())
+	return details
+}
+
+func readWindowsProcessCommandLine(handle windows.Handle) string {
+	var size uint32
+	err := windows.NtQueryInformationProcess(
+		handle, int32(windows.ProcessCommandLineInformation), nil, 0, &size,
+	)
+	if err != nil && !errors.Is(err, windows.STATUS_INFO_LENGTH_MISMATCH) {
+		return ""
+	}
+	if size == 0 || size > maxWindowsCommandLineBytes {
+		return ""
+	}
+	buffer := make([]byte, size)
+	if err := windows.NtQueryInformationProcess(
+		handle, int32(windows.ProcessCommandLineInformation), unsafe.Pointer(&buffer[0]), size, &size,
+	); err != nil {
+		return ""
+	}
+	commandLine := (*windows.NTUnicodeString)(unsafe.Pointer(&buffer[0]))
+	if commandLine.Buffer == nil || commandLine.Length == 0 ||
+		commandLine.Length%2 != 0 || commandLine.Length > commandLine.MaximumLength {
+		return ""
+	}
+	return commandLine.String()
 }
 
 func readWindowsProcessOwner(handle windows.Handle) (string, string) {
