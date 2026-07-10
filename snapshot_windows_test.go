@@ -16,7 +16,7 @@ func TestWindowsNativeSnapshotIdentifiesCurrentProcess(t *testing.T) {
 	if !found {
 		t.Fatalf("expected current process %d in native Windows snapshot", os.Getpid())
 	}
-	if proc.ID == "" || proc.Exe == "" || proc.StartedAt.IsZero() {
-		t.Fatalf("expected stable identity, executable, and start time, received %#v", proc)
+	if proc.ID == "" || proc.Exe == "" || proc.StartedAt.IsZero() || proc.UID == "" || proc.User == "" {
+		t.Fatalf("expected stable identity, executable, start time, and owner, received %#v", proc)
 	}
 }

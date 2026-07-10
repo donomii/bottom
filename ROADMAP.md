@@ -13,7 +13,7 @@
 
 - Native Windows lifecycle events with exit attribution.
 - A distributable native macOS event source with documented entitlement requirements and polling fallback.
-- Windows owner identity and richer command-line visibility.
+- Richer Windows command-line visibility.
 
 ## Later
 

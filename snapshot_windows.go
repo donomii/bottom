@@ -42,7 +42,7 @@ func windowsSnapshotProcess(entry windows.ProcessEntry32, capturedAt time.Time) 
 	pid := int(entry.ProcessID)
 	parentPID := int(entry.ParentProcessID)
 	command := windows.UTF16ToString(entry.ExeFile[:])
-	exe, startedAt := readWindowsProcessDetails(entry.ProcessID)
+	exe, startedAt, user, uid := readWindowsProcessDetails(entry.ProcessID)
 	if exe == "" {
 		exe = command
 	}
@@ -50,7 +50,8 @@ func windowsSnapshotProcess(entry windows.ProcessEntry32, capturedAt time.Time) 
 	if !startedAt.IsZero() {
 		startToken = strconv.FormatInt(startedAt.UnixNano(), 10)
 	}
-	proc := capturedProcess(processID(pid, startToken), pid, parentPID, command, exe, "", "", startedAt, capturedAt)
+	proc := capturedProcess(processID(pid, startToken), pid, parentPID, command, exe, "", user, startedAt, capturedAt)
+	proc.UID = uid
 	var sessionID uint32
 	if windows.ProcessIdToSessionId(entry.ProcessID, &sessionID) == nil {
 		proc.Session = strconv.FormatUint(uint64(sessionID), 10)
@@ -58,10 +59,10 @@ func windowsSnapshotProcess(entry windows.ProcessEntry32, capturedAt time.Time) 
 	return proc
 }
 
-func readWindowsProcessDetails(pid uint32) (string, time.Time) {
+func readWindowsProcessDetails(pid uint32) (string, time.Time, string, string) {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
-		return "", time.Time{}
+		return "", time.Time{}, "", ""
 	}
 	defer windows.CloseHandle(handle)
 	pathBuffer := make([]uint16, 32768)
@@ -70,12 +71,27 @@ func readWindowsProcessDetails(pid uint32) (string, time.Time) {
 	if windows.QueryFullProcessImageName(handle, 0, &pathBuffer[0], &pathSize) == nil {
 		exe = windows.UTF16ToString(pathBuffer[:pathSize])
 	}
+	user, uid := readWindowsProcessOwner(handle)
 	var creation windows.Filetime
 	var exit windows.Filetime
 	var kernel windows.Filetime
-	var user windows.Filetime
-	if windows.GetProcessTimes(handle, &creation, &exit, &kernel, &user) != nil {
-		return exe, time.Time{}
+	var userTime windows.Filetime
+	if windows.GetProcessTimes(handle, &creation, &exit, &kernel, &userTime) != nil {
+		return exe, time.Time{}, user, uid
 	}
-	return exe, time.Unix(0, creation.Nanoseconds())
+	return exe, time.Unix(0, creation.Nanoseconds()), user, uid
+}
+
+func readWindowsProcessOwner(handle windows.Handle) (string, string) {
+	var token windows.Token
+	if err := windows.OpenProcessToken(handle, windows.TOKEN_QUERY, &token); err != nil {
+		return "", ""
+	}
+	defer token.Close()
+	tokenUser, err := token.GetTokenUser()
+	if err != nil || tokenUser.User.Sid == nil {
+		return "", ""
+	}
+	uid := tokenUser.User.Sid.String()
+	return resolvedUser(uid), uid
 }
