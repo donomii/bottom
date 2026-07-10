@@ -123,7 +123,7 @@ func TestReportsAndComparisonUseFullCapturedAncestry(t *testing.T) {
 func TestSQLiteRecordingReaderIsReadOnlyAndEscapesPath(t *testing.T) {
 	directory := t.TempDir()
 	originalPath := filepath.Join(directory, "recording.sqlite")
-	path := filepath.Join(directory, "recording ?# name.sqlite")
+	path := filepath.Join(directory, "recording # name.sqlite")
 	writeReaderTestRecording(t, originalPath, []Event{{Kind: EventStart, Time: time.Unix(10, 0), PID: 10, Command: "worker", Backend: BackendPoll}})
 	if err := os.Rename(originalPath, path); err != nil {
 		t.Fatalf("rename recording to escaped path: %v", err)
