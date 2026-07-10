@@ -11,21 +11,20 @@ import (
 )
 
 func runRecordingReport(config RecordingReadConfig) error {
-	reader, err := openSQLiteRecordingReader(config.InputPath)
+	if err := rejectRecordingOutputAliases("bottom report", config.OutputPath, config.InputPaths); err != nil {
+		return err
+	}
+	stream, err := openRecordingFileEventStream("bottom report", config.InputPaths, config.Filter, config.Limit)
 	if err != nil {
 		return err
 	}
-	if err := rejectRecordingOutputAlias("bottom report", config.OutputPath, config.InputPath); err != nil {
-		return joinRecorderErrors(err, reader.Close())
-	}
 	summary, err := newRecordingReportSummary()
 	if err != nil {
-		return joinRecorderErrors(err, reader.Close())
+		return joinRecorderErrors(err, stream.Close())
 	}
-	readErr := reader.Stream(config.Filter, config.Limit, summary.observe)
-	readerCloseErr := reader.Close()
-	if err := joinRecorderErrors(readErr, readerCloseErr); err != nil {
-		return joinRecorderErrors(err, summary.Close())
+	readErr := stream.Stream(summary.observe)
+	if readErr != nil {
+		return joinRecorderErrors(readErr, summary.Close())
 	}
 	if err := summary.finish(); err != nil {
 		return joinRecorderErrors(err, summary.Close())

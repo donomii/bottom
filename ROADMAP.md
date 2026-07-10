@@ -18,4 +18,3 @@
 
 - Optional local OpenTelemetry export with no network activity unless explicitly configured.
 - Additional local event correlation for memory-pressure termination and service restart activity.
-- Recording views that merge multiple explicitly supplied host files without a central service.

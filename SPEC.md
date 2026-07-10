@@ -53,9 +53,9 @@ The user runs:
 - `bottom report` to summarize sessions, kinds, gaps, failures, executable counts, parent counts, ancestry edges, and shortest lifetimes;
 - `bottom compare` to compare process fingerprints, ancestry, counts, failures, and average lifetimes between two SQLite recordings.
 
-Read commands open an existing SQLite recording and do not migrate or modify it. A recording with an older schema must first be opened by the current recorder, which owns migrations.
+Each repeated `-input` supplies a SQLite recording to query, replay, or report. With no input, the command reads `bottom.sqlite`. A command accepts at most 64 explicitly supplied recordings, rejects paths that resolve to the same file, and opens every input read-only without migration or modification. A recording with an older schema must first be opened by the current recorder, which owns migrations.
 
-SQLite readers stream versioned events, versioned gaps, legacy events, and legacy gaps through separate indexes and merge them by exact time, sequence, and a deterministic row tie-breaker. Safe time, kind, parent, exit, and limit predicates run in SQLite; filters that require decoded context continue lazily until the requested number of matches is reached. A non-time row validation error is surfaced only when that row is next in merged order, so a positive limit can finish before a later error in another source. An invalid normalized time or time key fails immediately because the row cannot be ordered safely.
+Within each file, SQLite readers stream versioned events, versioned gaps, legacy events, and legacy gaps through separate indexes and merge them by exact time, sequence, and a deterministic row tie-breaker. Multiple files are then merged by exact time, sequence, explicit input order, and source rank. Safe time, kind, parent, exit, and limit predicates run in SQLite; filters that require decoded context continue lazily until the requested number of matches is reached. A non-time row validation error is surfaced only when that row is next in merged order, including across files, so a positive limit can finish before a later error. An invalid normalized time or time key fails immediately because the row cannot be ordered safely.
 
 Normalized columns are authoritative for filtering and returned events. Normalized times must be non-zero and agree with their indexed keys; versioned rows require event schema version 1 and every row requires a nonempty backend. An events-table kind must be start, exec, stop, or churn; gap belongs only in the gaps table. Nonempty raw versioned JSON must decode to an Event object with event schema version 1, a valid event kind, non-zero time, and nonempty backend. A nonempty normalized parent chain in a versioned row must be JSON after surrounding whitespace is removed. Legacy rows accept the pre-version-3 `PID[:command] <- PID[:command]` parent-chain format and reject malformed segments.
 
@@ -115,6 +115,7 @@ Capture-gap records bypass ordinary event filters so persisted coverage remains 
 
 ### Replay
 
+- `input_paths`: `bottom.sqlite` by default; `-input` may be repeated up to 64 times to merge distinct recordings.
 - `speed`: 1 by default and must be positive.
 - `maximum_delay`: 1 second by default and must not be negative; zero preserves full recorded delays.
 - `limit`: zero by default and must not be negative; a positive count stops after that many matching events.

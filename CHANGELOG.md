@@ -4,6 +4,7 @@
 
 - Added Windows process-owner attribution using token SIDs with background account-name resolution.
 - Added native Windows command-line capture with executable-name fallback when access is unavailable.
+- Added bounded chronological query, replay, and report views across up to 64 explicitly supplied recordings.
 - Added checksum-pinned Homebrew and Scoop recipes using the `bottom-events` package identifier.
 
 ## 0.1.1 - 2026-07-10

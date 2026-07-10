@@ -81,7 +81,7 @@ var completionOptions = []completionOption{
 	completionToggleOption("version", "Print build identity", recordCompletionCommands),
 	completionValueOption("tail", "Observe descendants this long after root exit", []string{"trace"}),
 	completionValueOption("perfetto", "Write a Perfetto-compatible timeline", []string{"trace"}),
-	completionValueOption("input", "Read this SQLite recording", readerCompletionCommands),
+	completionValueOption("input", "Read this SQLite recording; repeatable up to 64 times", readerCompletionCommands),
 	completionValueOption("limit", "Stop after this many matching events", readerCompletionCommands),
 	completionValueOption("speed", "Set the replay speed multiplier", []string{"replay"}),
 	completionValueOption("max-delay", "Cap the delay between replayed events", []string{"replay"}),

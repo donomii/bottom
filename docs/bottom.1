@@ -33,13 +33,13 @@ Start one command directly and record it and its observed descendants. Options m
 separator.
 .TP
 .B query
-Filter a SQLite recording and render text, JSONL, or CSV.
+Filter one or more SQLite recordings and render text, JSONL, or CSV.
 .TP
 .B replay
-Replay a SQLite recording with recorded timing or through the terminal interface.
+Replay one or more SQLite recordings with merged timing or through the terminal interface.
 .TP
 .B report
-Summarize sessions, event kinds, gaps, failures, process groups, ancestry, and lifetimes.
+Summarize sessions, event kinds, gaps, failures, process groups, ancestry, and lifetimes across recordings.
 .TP
 .B compare
 Compare process groups, ancestry, failures, counts, and lifetimes in two SQLite recordings.
@@ -56,6 +56,11 @@ Every option has a documented default and usage description. Run
 for recording options or
 .B bottom command -h
 for command-specific options.
+.PP
+The
+.B -input
+option may be repeated up to 64 times for query, replay, and report. Events are merged by time, sequence, and input order. Without this option, those commands read
+.IR bottom.sqlite .
 .SH RECORDING FORMATS
 Text output is intended for terminals. JSONL and CSV contain versioned session, event, and gap records. SQLite schema version 4 supports indexed queries, replay, reports, and comparisons.
 .SH FILES

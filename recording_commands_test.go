@@ -40,7 +40,7 @@ func TestSQLiteRecordingQueryAndReport(t *testing.T) {
 	if len(read) != 3 || read[0].Kind != EventStart || read[2].Kind != EventGap {
 		t.Fatalf("expected ordered lifecycle and gap events, received %#v", read)
 	}
-	query := RecordingReadConfig{InputPath: path, Format: FormatJSONL, OutputPath: filepath.Join(t.TempDir(), "query.jsonl"), Filter: Filter{EventMode: string(EventStop), HasExitCode: true, ExitCode: 7}}
+	query := RecordingReadConfig{InputPaths: []string{path}, Format: FormatJSONL, OutputPath: filepath.Join(t.TempDir(), "query.jsonl"), Filter: Filter{EventMode: string(EventStop), HasExitCode: true, ExitCode: 7}}
 	if err := runRecordingQuery(query); err != nil {
 		t.Fatalf("run recording query: %v", err)
 	}
@@ -74,6 +74,134 @@ func TestParseRecordingReadConfigRelativeTimeAndValidation(t *testing.T) {
 	}
 	if _, err := parseRecordingReadConfig("query", []string{"-speed", "2"}, now); err == nil {
 		t.Fatalf("expected replay-only option on query to be rejected")
+	}
+}
+
+func TestParseRecordingReadConfigAcceptsRepeatedInputs(t *testing.T) {
+	now := time.Unix(1000, 0)
+	config, err := parseRecordingReadConfig("query", []string{"-input", "first.sqlite", "-input", "second.sqlite"}, now)
+	if err != nil {
+		t.Fatalf("parse repeated recording inputs: %v", err)
+	}
+	if len(config.InputPaths) != 2 || config.InputPaths[0] != "first.sqlite" || config.InputPaths[1] != "second.sqlite" {
+		t.Fatalf("expected ordered recording inputs, received %#v", config.InputPaths)
+	}
+	defaultConfig, err := parseRecordingReadConfig("query", nil, now)
+	if err != nil {
+		t.Fatalf("parse default recording input: %v", err)
+	}
+	if len(defaultConfig.InputPaths) != 1 || defaultConfig.InputPaths[0] != "bottom.sqlite" {
+		t.Fatalf("expected bottom.sqlite default input, received %#v", defaultConfig.InputPaths)
+	}
+	tooMany := []string{}
+	for index := 0; index <= maxRecordingInputPaths; index++ {
+		tooMany = append(tooMany, "-input", fmt.Sprintf("recording-%d.sqlite", index))
+	}
+	if _, err := parseRecordingReadConfig("query", tooMany, now); err == nil {
+		t.Fatalf("expected more than %d recording inputs to be rejected", maxRecordingInputPaths)
+	}
+}
+
+func TestRecordingReadersMergeMultipleInputs(t *testing.T) {
+	directory := t.TempDir()
+	firstPath := filepath.Join(directory, "first.sqlite")
+	secondPath := filepath.Join(directory, "second.sqlite")
+	writeReaderTestRecording(t, firstPath, []Event{
+		{Kind: EventStart, Time: time.Unix(10, 0), PID: 10, Backend: BackendPoll},
+		{Kind: EventStart, Time: time.Unix(30, 0), PID: 30, Backend: BackendPoll},
+	})
+	writeReaderTestRecording(t, secondPath, []Event{
+		{Kind: EventStart, Time: time.Unix(20, 0), PID: 20, Backend: BackendPoll},
+		{Kind: EventStart, Time: time.Unix(30, 0), PID: 31, Backend: BackendPoll},
+	})
+	config := RecordingReadConfig{InputPaths: []string{firstPath, secondPath}, Filter: Filter{EventMode: EventModeAll}}
+	events, err := filteredRecordingEvents(config)
+	if err != nil {
+		t.Fatalf("merge recording inputs: %v", err)
+	}
+	expectedPIDs := []int{10, 20, 30, 31}
+	if len(events) != len(expectedPIDs) {
+		t.Fatalf("expected %d merged events, received %#v", len(expectedPIDs), events)
+	}
+	for index, expectedPID := range expectedPIDs {
+		if events[index].PID != expectedPID {
+			t.Fatalf("expected merged pid %d at index %d, received %#v", expectedPID, index, events)
+		}
+	}
+	config.Limit = 2
+	limited, err := filteredRecordingEvents(config)
+	if err != nil {
+		t.Fatalf("limit merged recording inputs: %v", err)
+	}
+	if len(limited) != 2 || limited[0].PID != 10 || limited[1].PID != 20 {
+		t.Fatalf("expected earliest two merged events, received %#v", limited)
+	}
+	reportPath := filepath.Join(directory, "report.txt")
+	reportConfig := RecordingReadConfig{
+		InputPaths: []string{firstPath, secondPath}, OutputPath: reportPath, Filter: Filter{EventMode: EventModeAll},
+	}
+	if err := runRecordingReport(reportConfig); err != nil {
+		t.Fatalf("report merged recording inputs: %v", err)
+	}
+	report, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("read merged recording report: %v", err)
+	}
+	if !bytes.Contains(report, []byte("events=4")) {
+		t.Fatalf("expected four reported events, received %q", report)
+	}
+	duplicate := RecordingReadConfig{InputPaths: []string{firstPath, filepath.Join(directory, ".", "first.sqlite")}, Filter: Filter{EventMode: EventModeAll}}
+	if _, err := filteredRecordingEvents(duplicate); err == nil || !strings.Contains(err.Error(), "refer to the same file") {
+		t.Fatalf("expected duplicate recording input rejection, received %v", err)
+	}
+}
+
+func TestRecordingInputLimitDefersLaterFileValidationError(t *testing.T) {
+	directory := t.TempDir()
+	earlyPath := filepath.Join(directory, "early.sqlite")
+	laterPath := filepath.Join(directory, "later.sqlite")
+	writeReaderTestRecording(t, earlyPath, []Event{{Kind: EventStart, Time: time.Unix(10, 0), PID: 10, Backend: BackendPoll}})
+	writeReaderTestRecording(t, laterPath, []Event{{Kind: EventStart, Time: time.Unix(20, 0), PID: 20, Backend: BackendPoll}})
+	db, err := sql.Open("sqlite", laterPath)
+	if err != nil {
+		t.Fatalf("open later recording for corruption: %v", err)
+	}
+	_, updateErr := db.Exec(`UPDATE events SET event_json = '{'`)
+	closeErr := db.Close()
+	if updateErr != nil || closeErr != nil {
+		t.Fatalf("corrupt later recording: update=%v close=%v", updateErr, closeErr)
+	}
+	config := RecordingReadConfig{
+		InputPaths: []string{earlyPath, laterPath}, Limit: 1, Filter: Filter{EventMode: EventModeAll},
+	}
+	events, err := filteredRecordingEvents(config)
+	if err != nil {
+		t.Fatalf("read earlier file before later validation error: %v", err)
+	}
+	if len(events) != 1 || events[0].PID != 10 {
+		t.Fatalf("expected earlier file event through limit, received %#v", events)
+	}
+	config.Limit = 0
+	if _, err := filteredRecordingEvents(config); err == nil || !strings.Contains(err.Error(), "decode versioned event") {
+		t.Fatalf("expected unlimited merged reading to surface later file error, received %v", err)
+	}
+}
+
+func TestRecordingQueryOpensEveryInputBeforeCreatingOutput(t *testing.T) {
+	directory := t.TempDir()
+	inputPath := filepath.Join(directory, "recording.sqlite")
+	missingPath := filepath.Join(directory, "missing.sqlite")
+	outputPath := filepath.Join(directory, "query.jsonl")
+	writeReaderTestRecording(t, inputPath, []Event{{Kind: EventStart, Time: time.Unix(10, 0), PID: 10, Backend: BackendPoll}})
+	config := RecordingReadConfig{
+		InputPaths: []string{inputPath, missingPath}, OutputPath: outputPath,
+		Format: FormatJSONL, Filter: Filter{EventMode: EventModeAll},
+	}
+	if err := runRecordingQuery(config); err == nil || !strings.Contains(err.Error(), missingPath) {
+		t.Fatalf("expected missing recording error containing %q, received %v", missingPath, err)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no query output after input validation failure, received %v", err)
 	}
 }
 
@@ -155,11 +283,16 @@ func TestRecordingCommandsRejectOutputAliases(t *testing.T) {
 	writeReaderTestRecording(t, comparisonPath, []Event{{Kind: EventStart, Time: time.Unix(20, 0), PID: 20, Backend: BackendPoll}})
 	inputAlias := filepath.Dir(inputPath) + string(os.PathSeparator) + "." + string(os.PathSeparator) + filepath.Base(inputPath)
 
-	query := RecordingReadConfig{InputPath: inputPath, OutputPath: inputAlias, Format: FormatText, Filter: Filter{EventMode: EventModeAll}}
+	query := RecordingReadConfig{InputPaths: []string{inputPath}, OutputPath: inputAlias, Format: FormatText, Filter: Filter{EventMode: EventModeAll}}
 	if err := runRecordingQuery(query); err == nil || !strings.Contains(err.Error(), "bottom query output path") || !strings.Contains(err.Error(), "resolves to input recording") {
 		t.Fatalf("expected query output alias rejection, received %v", err)
 	}
-	report := RecordingReadConfig{InputPath: inputPath, OutputPath: inputAlias, Filter: Filter{EventMode: EventModeAll}}
+	comparisonAlias := filepath.Join(filepath.Dir(comparisonPath), ".", filepath.Base(comparisonPath))
+	query = RecordingReadConfig{InputPaths: []string{inputPath, comparisonPath}, OutputPath: comparisonAlias, Format: FormatText, Filter: Filter{EventMode: EventModeAll}}
+	if err := runRecordingQuery(query); err == nil || !strings.Contains(err.Error(), "resolves to input recording") {
+		t.Fatalf("expected query output alias rejection for every input, received %v", err)
+	}
+	report := RecordingReadConfig{InputPaths: []string{inputPath}, OutputPath: inputAlias, Filter: Filter{EventMode: EventModeAll}}
 	if err := runRecordingReport(report); err == nil || !strings.Contains(err.Error(), "bottom report output path") || !strings.Contains(err.Error(), "resolves to input recording") {
 		t.Fatalf("expected report output alias rejection, received %v", err)
 	}
@@ -189,7 +322,7 @@ func TestRecordingStreamStopsAtLimitBeforeLaterInvalidRow(t *testing.T) {
 
 	queryPath := filepath.Join(t.TempDir(), "query.jsonl")
 	query := RecordingReadConfig{
-		InputPath: path, OutputPath: queryPath, Format: FormatJSONL, Limit: 1,
+		InputPaths: []string{path}, OutputPath: queryPath, Format: FormatJSONL, Limit: 1,
 		Filter: Filter{EventMode: EventModeAll, Include: []string{"worker"}},
 	}
 	if err := runRecordingQuery(query); err != nil {
@@ -205,7 +338,7 @@ func TestRecordingStreamStopsAtLimitBeforeLaterInvalidRow(t *testing.T) {
 
 	reportPath := filepath.Join(t.TempDir(), "report.txt")
 	report := RecordingReadConfig{
-		InputPath: path, OutputPath: reportPath, Limit: 1,
+		InputPaths: []string{path}, OutputPath: reportPath, Limit: 1,
 		Filter: Filter{EventMode: EventModeAll, Include: []string{"worker"}},
 	}
 	if err := runRecordingReport(report); err != nil {

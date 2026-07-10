@@ -62,7 +62,7 @@ type Config struct {
 }
 
 type RecordingReadConfig struct {
-	InputPath  string
+	InputPaths []string
 	OutputPath string
 	Format     OutputFormat
 	Filter     Filter

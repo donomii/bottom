@@ -41,6 +41,10 @@ type sqliteRecordingCursor struct {
 	ready         bool
 }
 
+type sqliteRecordingEventCursor struct {
+	cursors []*sqliteRecordingCursor
+}
+
 func openSQLiteRecordingReader(path string) (*sqliteRecordingReader, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -120,6 +124,34 @@ func formatSQLiteRecordingCloseError(path string, err error) error {
 }
 
 func (reader *sqliteRecordingReader) Stream(filter Filter, limit int, visit func(Event) error) error {
+	eventCursor, err := reader.newEventCursor(filter, limit)
+	if err != nil {
+		return err
+	}
+	matched := 0
+	for {
+		selected := eventCursor.current()
+		if selected == nil {
+			break
+		}
+		if selected.validationErr != nil {
+			return joinRecorderErrors(selected.validationErr, eventCursor.Close())
+		}
+		if err := visit(selected.event); err != nil {
+			return joinRecorderErrors(err, eventCursor.Close())
+		}
+		matched++
+		if limit > 0 && matched >= limit {
+			break
+		}
+		if err := eventCursor.advance(); err != nil {
+			return joinRecorderErrors(err, eventCursor.Close())
+		}
+	}
+	return eventCursor.Close()
+}
+
+func (reader *sqliteRecordingReader) newEventCursor(filter Filter, limit int) (*sqliteRecordingEventCursor, error) {
 	cursors := []*sqliteRecordingCursor{}
 	for _, source := range recordingQuerySources {
 		if !source.accepts(filter) {
@@ -127,38 +159,42 @@ func (reader *sqliteRecordingReader) Stream(filter Filter, limit int, visit func
 		}
 		rows, err := reader.querySourceRows(source, filter, limit, false)
 		if err != nil {
-			return joinRecorderErrors(
+			return nil, joinRecorderErrors(
 				fmt.Errorf("query ordered %s from process recording %q: %w", source.name(), reader.path, err),
 				closeSQLiteRecordingCursors(cursors),
 			)
 		}
 		cursor := &sqliteRecordingCursor{path: reader.path, source: source, filter: filter, rows: rows}
 		if err := cursor.advance(); err != nil {
-			return joinRecorderErrors(err, cursor.Close(), closeSQLiteRecordingCursors(cursors))
+			return nil, joinRecorderErrors(err, cursor.Close(), closeSQLiteRecordingCursors(cursors))
 		}
 		cursors = append(cursors, cursor)
 	}
-	matched := 0
-	for {
-		selected := nextSQLiteRecordingCursor(cursors)
-		if selected == nil {
-			break
-		}
-		if selected.validationErr != nil {
-			return joinRecorderErrors(selected.validationErr, closeSQLiteRecordingCursors(cursors))
-		}
-		if err := visit(selected.event); err != nil {
-			return joinRecorderErrors(err, closeSQLiteRecordingCursors(cursors))
-		}
-		matched++
-		if limit > 0 && matched >= limit {
-			break
-		}
-		if err := selected.advance(); err != nil {
-			return joinRecorderErrors(err, closeSQLiteRecordingCursors(cursors))
-		}
+	return &sqliteRecordingEventCursor{cursors: cursors}, nil
+}
+
+func (cursor *sqliteRecordingEventCursor) current() *sqliteRecordingCursor {
+	if cursor == nil {
+		return nil
 	}
-	return closeSQLiteRecordingCursors(cursors)
+	return nextSQLiteRecordingCursor(cursor.cursors)
+}
+
+func (cursor *sqliteRecordingEventCursor) advance() error {
+	selected := cursor.current()
+	if selected == nil {
+		return nil
+	}
+	return selected.advance()
+}
+
+func (cursor *sqliteRecordingEventCursor) Close() error {
+	if cursor == nil {
+		return nil
+	}
+	err := closeSQLiteRecordingCursors(cursor.cursors)
+	cursor.cursors = nil
+	return err
 }
 
 func (cursor *sqliteRecordingCursor) advance() error {

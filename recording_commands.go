@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const maxRecordingInputPaths = 64
+
 type recordingFilterFlags struct {
 	include      listFlag
 	exclude      listFlag
@@ -25,6 +27,20 @@ type recordingFilterFlags struct {
 type optionalIntFlag struct {
 	set   bool
 	value int
+}
+
+type recordingPathListFlag []string
+
+func (paths *recordingPathListFlag) String() string {
+	return strings.Join(*paths, ",")
+}
+
+func (paths *recordingPathListFlag) Set(path string) error {
+	if path == "" {
+		return fmt.Errorf("expected a non-empty recording input path")
+	}
+	*paths = append(*paths, path)
+	return nil
 }
 
 func (value *optionalIntFlag) String() string {
@@ -46,16 +62,20 @@ func (value *optionalIntFlag) Set(text string) error {
 
 func parseRecordingReadConfig(command string, args []string, now time.Time) (RecordingReadConfig, error) {
 	config := RecordingReadConfig{
-		InputPath: "bottom.sqlite",
-		Format:    FormatText,
-		Speed:     1,
-		MaxDelay:  time.Second,
-		Filter:    Filter{EventMode: EventModeAll},
+		Format:   FormatText,
+		Speed:    1,
+		MaxDelay: time.Second,
+		Filter:   Filter{EventMode: EventModeAll},
 	}
+	var inputPaths recordingPathListFlag
 	filterFlags := recordingFilterFlags{}
 	format := string(config.Format)
 	flagset := flag.NewFlagSet("bottom "+command, flag.ContinueOnError)
-	flagset.StringVar(&config.InputPath, "input", config.InputPath, "SQLite recording to read")
+	inputDescription := fmt.Sprintf(
+		"SQLite recording to read; may be repeated up to %d times and defaults to bottom.sqlite",
+		maxRecordingInputPaths,
+	)
+	flagset.Var(&inputPaths, "input", inputDescription)
 	flagset.IntVar(&config.Limit, "limit", 0, "maximum matching events to read; zero reads all matching events")
 	switch command {
 	case "query":
@@ -81,9 +101,13 @@ func parseRecordingReadConfig(command string, args []string, now time.Time) (Rec
 	if command == "query" && config.Format != FormatText && config.Format != FormatJSONL && config.Format != FormatCSV {
 		return RecordingReadConfig{}, fmt.Errorf("bottom %s format must be text, jsonl, or csv, received %q", command, config.Format)
 	}
-	if config.InputPath == "" {
-		return RecordingReadConfig{}, fmt.Errorf("bottom %s input path must be non-empty", command)
+	if len(inputPaths) == 0 {
+		inputPaths = recordingPathListFlag{"bottom.sqlite"}
 	}
+	if len(inputPaths) > maxRecordingInputPaths {
+		return RecordingReadConfig{}, fmt.Errorf("bottom %s accepts at most %d input recordings, received %d", command, maxRecordingInputPaths, len(inputPaths))
+	}
+	config.InputPaths = append([]string(nil), inputPaths...)
 	if config.Limit < 0 {
 		return RecordingReadConfig{}, fmt.Errorf("bottom %s limit must not be negative, received %d", command, config.Limit)
 	}
@@ -173,21 +197,20 @@ func parseRecordingTime(value string, now time.Time) (time.Time, error) {
 }
 
 func runRecordingQuery(config RecordingReadConfig) error {
-	reader, err := openSQLiteRecordingReader(config.InputPath)
+	if err := rejectRecordingOutputAliases("bottom query", config.OutputPath, config.InputPaths); err != nil {
+		return err
+	}
+	stream, err := openRecordingFileEventStream("bottom query", config.InputPaths, config.Filter, config.Limit)
 	if err != nil {
 		return err
 	}
-	if err := rejectRecordingOutputAlias("bottom query", config.OutputPath, config.InputPath); err != nil {
-		return joinRecorderErrors(err, reader.Close())
-	}
 	recorder, err := newQueryOutputRecorder(config)
 	if err != nil {
-		return joinRecorderErrors(err, reader.Close())
+		return joinRecorderErrors(err, stream.Close())
 	}
-	readErr := reader.Stream(config.Filter, config.Limit, recorder.Write)
-	readerCloseErr := reader.Close()
+	readErr := stream.Stream(recorder.Write)
 	recorderCloseErr := recorder.Close()
-	return joinRecorderErrors(readErr, readerCloseErr, recorderCloseErr)
+	return joinRecorderErrors(readErr, recorderCloseErr)
 }
 
 func newQueryOutputRecorder(config RecordingReadConfig) (Recorder, error) {
@@ -215,24 +238,19 @@ func newQueryOutputRecorder(config RecordingReadConfig) (Recorder, error) {
 }
 
 func filteredRecordingEvents(config RecordingReadConfig) ([]Event, error) {
-	reader, err := openSQLiteRecordingReader(config.InputPath)
-	if err != nil {
-		return nil, err
-	}
 	filtered := []Event{}
-	readErr := reader.Stream(config.Filter, config.Limit, func(event Event) error {
+	readErr := streamSQLiteRecordings("read process recordings", config.InputPaths, config.Filter, config.Limit, func(event Event) error {
 		filtered = append(filtered, event)
 		return nil
 	})
-	closeErr := reader.Close()
-	if err := joinRecorderErrors(readErr, closeErr); err != nil {
-		return nil, err
+	if readErr != nil {
+		return nil, readErr
 	}
 	return filtered, nil
 }
 
 func runRecordingReplay(ctx context.Context, config RecordingReadConfig) error {
-	reader, err := openSQLiteRecordingReader(config.InputPath)
+	stream, err := openRecordingFileEventStream("bottom replay", config.InputPaths, config.Filter, config.Limit)
 	if err != nil {
 		return err
 	}
@@ -241,7 +259,7 @@ func runRecordingReplay(ctx context.Context, config RecordingReadConfig) error {
 		recorder = NewTUIRecorder(os.Stdout)
 	}
 	var previous time.Time
-	readErr := reader.Stream(config.Filter, config.Limit, func(event Event) error {
+	readErr := stream.Stream(func(event Event) error {
 		if !previous.IsZero() {
 			delay := time.Duration(float64(event.Time.Sub(previous)) / config.Speed)
 			if delay < 0 {
@@ -260,9 +278,8 @@ func runRecordingReplay(ctx context.Context, config RecordingReadConfig) error {
 		previous = event.Time
 		return nil
 	})
-	readerCloseErr := reader.Close()
 	recorderCloseErr := recorder.Close()
-	return joinRecorderErrors(readErr, readerCloseErr, recorderCloseErr)
+	return joinRecorderErrors(readErr, recorderCloseErr)
 }
 
 func waitForReplay(ctx context.Context, delay time.Duration) error {
