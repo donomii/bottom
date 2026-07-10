@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added checksum-pinned Homebrew and Scoop recipes using the `bottom-events` package identifier.
+
 ## 0.1.1 - 2026-07-10
 
 - Added fish completion generation and a packaged `bottom(1)` manual page.

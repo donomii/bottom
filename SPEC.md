@@ -8,6 +8,8 @@ The default interaction is an event stream suitable for terminals and pipelines.
 
 The user runs `bottom completion` to write fish completions to standard output. The command explains the fish completion installation path through `bottom completion -h`. Release archives include the `bottom(1)` manual page, which lists commands, recording formats, default files, and where to find every option description.
 
+The repository includes checksum-pinned Homebrew and Scoop recipes under `packaging/`. Their package identifier is `bottom-events`, while the installed command remains `bottom`. Each recipe names a published version, exact platform archive URLs, and the corresponding release checksums.
+
 ## User Interactions
 
 ### Continuous recording
