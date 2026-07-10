@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-07-10
+
 - Replaced recurring helper-process polling on Linux, macOS, and Windows with native read-only process capture.
 - Added direct Linux fork, exec, and exit capture with kernel timestamps, sequence-gap detection, receive-overflow diagnostics, and periodic resynchronization.
 - Corrected process lifetimes by preserving first observation and native start times across refreshes.
