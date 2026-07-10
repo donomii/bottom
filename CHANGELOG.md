@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-07-10
+
+- Added fish completion generation and a packaged `bottom(1)` manual page.
+
 ## 0.1.0 - 2026-07-10
 
 - Replaced recurring helper-process polling on Linux, macOS, and Windows with native read-only process capture.

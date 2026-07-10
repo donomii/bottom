@@ -6,6 +6,8 @@ Bottom is a read-only process lifecycle recorder. It records process starts, exe
 
 The default interaction is an event stream suitable for terminals and pipelines. Optional recorders persist human-readable events to text or versioned sessions to JSONL, CSV, and SQLite. Recorded sessions can be queried, replayed, summarized, compared, and visualized.
 
+The user runs `bottom completion` to write fish completions to standard output. The command explains the fish completion installation path through `bottom completion -h`. Release archives include the `bottom(1)` manual page, which lists commands, recording formats, default files, and where to find every option description.
+
 ## User Interactions
 
 ### Continuous recording

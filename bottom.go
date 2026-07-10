@@ -308,6 +308,13 @@ func main() {
 		fmt.Println(versionLine())
 		return
 	}
+	if command == "completion" {
+		if err := runCompletion(args, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "bottom: %v\n", err)
+			os.Exit(2)
+		}
+		return
+	}
 	if command == "trace" {
 		config, err := parseTraceConfig(args)
 		if err != nil {
@@ -360,7 +367,7 @@ func main() {
 		return
 	}
 	if command != "query" && command != "replay" && command != "report" {
-		fmt.Fprintf(os.Stderr, "bottom: command must be record, watch, trace, query, replay, report, compare, or version, received %q\n", command)
+		fmt.Fprintf(os.Stderr, "bottom: command must be record, watch, trace, query, replay, report, compare, version, or completion, received %q\n", command)
 		os.Exit(2)
 	}
 	config, err := parseRecordingReadConfig(command, args, time.Now())

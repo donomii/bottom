@@ -14,7 +14,6 @@
 - Native Windows lifecycle events with exit attribution.
 - A distributable native macOS event source with documented entitlement requirements and polling fallback.
 - Windows owner identity and richer command-line visibility.
-- Shell completion generation and manual pages.
 - Package recipes using the `bottom-events` identifier after the first tagged release.
 
 ## Later

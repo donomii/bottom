@@ -1,0 +1,77 @@
+.TH BOTTOM 1 "2026-07-10" "bottom 0.1.1" "User Commands"
+.SH NAME
+bottom \- record process lifecycle events
+.SH SYNOPSIS
+.B bottom
+[
+.I options
+]
+.br
+.B bottom
+.I command
+[
+.I options
+]
+.SH DESCRIPTION
+.B bottom
+is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, and detected capture gaps. Recordings can be queried, replayed, summarized, compared, and exported as a Perfetto timeline.
+.PP
+With no command, bottom behaves like
+.BR "bottom record" .
+.SH COMMANDS
+.TP
+.B record
+Record lifecycle events. This is the default command.
+.TP
+.B watch
+Alias for
+.BR record .
+.TP
+.B trace
+Start one command directly and record it and its observed descendants. Options must precede an exact
+.B --
+separator.
+.TP
+.B query
+Filter a SQLite recording and render text, JSONL, or CSV.
+.TP
+.B replay
+Replay a SQLite recording with recorded timing or through the terminal interface.
+.TP
+.B report
+Summarize sessions, event kinds, gaps, failures, process groups, ancestry, and lifetimes.
+.TP
+.B compare
+Compare process groups, ancestry, failures, counts, and lifetimes in two SQLite recordings.
+.TP
+.B version
+Print version, source commit, and build date.
+.TP
+.B completion
+Write fish completions to standard output. Save the output as
+.IR ~/.config/fish/completions/bottom.fish .
+.SH OPTIONS
+Every option has a documented default and usage description. Run
+.B bottom -h
+for recording options or
+.B bottom command -h
+for command-specific options.
+.SH RECORDING FORMATS
+Text output is intended for terminals. JSONL and CSV contain versioned session, event, and gap records. SQLite schema version 4 supports indexed queries, replay, reports, and comparisons.
+.SH FILES
+.TP
+.I bottom.sqlite
+Default SQLite recording path.
+.TP
+.I bottom-trace.sqlite
+Default trace recording path.
+.TP
+.I ~/.config/fish/completions/bottom.fish
+Fish completion installation path.
+.SH SECURITY
+bottom observes processes but does not act on them. New recording files request owner-only access. Use repeated
+.B -redact
+options to replace exact sensitive values before recording.
+.SH SEE ALSO
+.BR ps (1),
+.BR sqlite3 (1)
