@@ -3,65 +3,79 @@
 package main
 
 import (
-	"bytes"
-	"encoding/csv"
+	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
-	"strings"
 	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func ReadProcessSnapshot() (ProcessSnapshot, error) {
-	output, err := exec.Command("wmic", "process", "get", "ProcessId,ParentProcessId,ExecutablePath,CommandLine", "/format:csv").CombinedOutput()
+	handle, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
-		return nil, fmt.Errorf("run wmic for process snapshot: expected process table output, received error %w and output %q", err, string(output))
+		return nil, fmt.Errorf("create native Windows process snapshot: %w", err)
 	}
-	records, err := csv.NewReader(bytes.NewReader(output)).ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("parse wmic csv process snapshot: %w", err)
-	}
-	if len(records) == 0 {
-		return ProcessSnapshot{}, nil
-	}
-	header := records[0]
-	commandIndex := csvIndex(header, "CommandLine")
-	exeIndex := csvIndex(header, "ExecutablePath")
-	parentIndex := csvIndex(header, "ParentProcessId")
-	pidIndex := csvIndex(header, "ProcessId")
-	if commandIndex < 0 || exeIndex < 0 || parentIndex < 0 || pidIndex < 0 {
-		return nil, fmt.Errorf("parse wmic csv process snapshot: expected CommandLine, ExecutablePath, ParentProcessId, and ProcessId columns, received %q", strings.Join(header, ","))
-	}
+	defer windows.CloseHandle(handle)
 	now := time.Now()
 	snapshot := ProcessSnapshot{}
-	for _, record := range records[1:] {
-		if len(record) <= pidIndex || len(record) <= parentIndex {
-			continue
+	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	if err := windows.Process32First(handle, &entry); err != nil {
+		return nil, fmt.Errorf("read first process from native Windows snapshot: %w", err)
+	}
+	for {
+		proc := windowsSnapshotProcess(entry, now)
+		snapshot[proc.ID] = proc
+		entry.Size = uint32(unsafe.Sizeof(windows.ProcessEntry32{}))
+		if err := windows.Process32Next(handle, &entry); err != nil {
+			if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
+				break
+			}
+			return nil, fmt.Errorf("read next process from native Windows snapshot after pid %d: %w", proc.PID, err)
 		}
-		pid, err := strconv.Atoi(strings.TrimSpace(record[pidIndex]))
-		if err != nil {
-			continue
-		}
-		ppid, err := strconv.Atoi(strings.TrimSpace(record[parentIndex]))
-		if err != nil {
-			ppid = 0
-		}
-		command := strings.TrimSpace(record[commandIndex])
-		exe := strings.TrimSpace(record[exeIndex])
-		if command == "" {
-			command = exe
-		}
-		id := processID(pid, "")
-		snapshot[id] = capturedProcess(id, pid, ppid, command, exe, "", "", time.Time{}, now)
 	}
 	return snapshot, nil
 }
 
-func csvIndex(header []string, name string) int {
-	for i, field := range header {
-		if strings.EqualFold(strings.TrimSpace(field), name) {
-			return i
-		}
+func windowsSnapshotProcess(entry windows.ProcessEntry32, capturedAt time.Time) Process {
+	pid := int(entry.ProcessID)
+	parentPID := int(entry.ParentProcessID)
+	command := windows.UTF16ToString(entry.ExeFile[:])
+	exe, startedAt := readWindowsProcessDetails(entry.ProcessID)
+	if exe == "" {
+		exe = command
 	}
-	return -1
+	startToken := ""
+	if !startedAt.IsZero() {
+		startToken = strconv.FormatInt(startedAt.UnixNano(), 10)
+	}
+	proc := capturedProcess(processID(pid, startToken), pid, parentPID, command, exe, "", "", startedAt, capturedAt)
+	var sessionID uint32
+	if windows.ProcessIdToSessionId(entry.ProcessID, &sessionID) == nil {
+		proc.Session = strconv.FormatUint(uint64(sessionID), 10)
+	}
+	return proc
+}
+
+func readWindowsProcessDetails(pid uint32) (string, time.Time) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return "", time.Time{}
+	}
+	defer windows.CloseHandle(handle)
+	pathBuffer := make([]uint16, 32768)
+	pathSize := uint32(len(pathBuffer))
+	exe := ""
+	if windows.QueryFullProcessImageName(handle, 0, &pathBuffer[0], &pathSize) == nil {
+		exe = windows.UTF16ToString(pathBuffer[:pathSize])
+	}
+	var creation windows.Filetime
+	var exit windows.Filetime
+	var kernel windows.Filetime
+	var user windows.Filetime
+	if windows.GetProcessTimes(handle, &creation, &exit, &kernel, &user) != nil {
+		return exe, time.Time{}
+	}
+	return exe, time.Unix(0, creation.Nanoseconds())
 }

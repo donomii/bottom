@@ -1,4 +1,4 @@
-//go:build !linux && !windows
+//go:build !linux && !windows && !darwin
 
 package main
 
@@ -13,7 +13,7 @@ import (
 func ReadProcessSnapshot() (ProcessSnapshot, error) {
 	output, err := exec.Command("ps", "-axo", "pid=,ppid=,user=,command=").CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("run ps for process snapshot: expected process table output, received error %w and output %q", err, string(output))
+		return nil, fmt.Errorf("run ps for process snapshot: expected process table output, command failed with %w after returning %d bytes", err, len(output))
 	}
 	now := time.Now()
 	snapshot := ProcessSnapshot{}

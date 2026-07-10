@@ -99,6 +99,9 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	if config.PollInterval != 100*time.Millisecond {
 		t.Fatalf("expected default poll interval 100ms, received %s", config.PollInterval)
 	}
+	if config.Filter.EventMode != EventModeAll || config.RecorderBuffer != 1024 || config.SQLiteBatch != 128 || config.SQLiteFlush != 250*time.Millisecond {
+		t.Fatalf("expected documented default event and recorder settings, received %#v", config)
+	}
 	config, err = parseConfig([]string{"-poll", "25ms"})
 	if err != nil {
 		t.Fatalf("parse millisecond poll config: %v", err)
@@ -108,9 +111,32 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	}
 }
 
-func TestParseConfigRejectsGapEvents(t *testing.T) {
-	if _, err := parseConfig([]string{"-events", "gap"}); err == nil {
-		t.Fatalf("expected gap event mode to be rejected")
+func TestParseConfigRejectsInvalidCrossOptionCombinations(t *testing.T) {
+	cases := [][]string{
+		{"-format", "sqlite", "-rotate-size", "1024"},
+		{"-format", "jsonl", "-retention", "1h"},
+		{"-include-regex", "["},
+		{"unexpected"},
+		{"-min-duration", "2s", "-max-duration", "1s"},
+		{"-tui", "-format", "jsonl"},
+		{"-trigger", "gap"},
+	}
+	for _, args := range cases {
+		if _, err := parseConfig(args); err == nil {
+			t.Fatalf("expected invalid arguments %q to be rejected", args)
+		}
+	}
+}
+
+func TestParseConfigAcceptsStructuredEventModes(t *testing.T) {
+	for _, mode := range []string{"exec", "gap", "all"} {
+		config, err := parseConfig([]string{"-events", mode})
+		if err != nil {
+			t.Fatalf("parse event mode %q: %v", mode, err)
+		}
+		if config.Filter.EventMode != mode {
+			t.Fatalf("expected event mode %q, received %q", mode, config.Filter.EventMode)
+		}
 	}
 }
 
@@ -132,5 +158,45 @@ func TestStopTextIncludesCommand(t *testing.T) {
 	line := formatTextEvent(event)
 	if !strings.Contains(line, `cmd="sample-worker"`) {
 		t.Fatalf("expected stop text to include command, received %q", line)
+	}
+}
+
+func TestVersionLineIncludesBuildIdentity(t *testing.T) {
+	line := versionLine()
+	for _, field := range []string{"bottom ", " commit=", " built="} {
+		if !strings.Contains(line, field) {
+			t.Fatalf("expected version line %q to contain %q", line, field)
+		}
+	}
+}
+
+func TestVersionLinePreservesInjectedReleaseIdentity(t *testing.T) {
+	originalVersion := version
+	originalCommit := commit
+	originalBuildDate := buildDate
+	version = "v1.2.3"
+	commit = "0123456789abcdef"
+	buildDate = "2026-07-09T00:00:00Z"
+	defer func() {
+		version = originalVersion
+		commit = originalCommit
+		buildDate = originalBuildDate
+	}()
+	expected := "bottom v1.2.3 commit=0123456789abcdef built=2026-07-09T00:00:00Z"
+	if line := versionLine(); line != expected {
+		t.Fatalf("expected injected release identity %q, received %q", expected, line)
+	}
+}
+
+func TestTextOutputEscapesParentTerminalControls(t *testing.T) {
+	event := Event{
+		Kind:        EventStart,
+		Time:        time.Unix(1, 0),
+		Backend:     BackendPoll,
+		ParentChain: []ProcessSummary{{PID: 7, Command: "parent\x1b[2J"}},
+	}
+	line := formatTextEvent(event)
+	if strings.ContainsRune(line, '\x1b') || !strings.Contains(line, `parent\x1b[2J`) {
+		t.Fatalf("expected escaped parent command in text output, received %q", line)
 	}
 }

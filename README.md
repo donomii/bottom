@@ -1,67 +1,236 @@
-# Bottom
+# bottom — process history for your terminal
 
 [![Test](https://github.com/donomii/bottom/actions/workflows/test.yml/badge.svg)](https://github.com/donomii/bottom/actions/workflows/test.yml)
+[![Release](https://github.com/donomii/bottom/actions/workflows/release.yml/badge.svg)](https://github.com/donomii/bottom/actions/workflows/release.yml)
 
-Bottom is the opposite of top: top shows what is alive right now, while bottom records what started, or stopped.
+`top` shows what is running. `bottom` shows what ran.
 
-![bottom demo](docs/demo.gif)
+Bottom is a read-only process lifecycle flight recorder for transient commands, restart loops, and process ancestry. It records start, exec, stop, churn, and capture-gap events to the terminal, JSONL, CSV, SQLite, or an interactive timeline.
 
-## Run
+![Bottom process lifecycle flight recorder](docs/social-preview.png)
+
+This is the lifecycle recorder at [donomii/bottom](https://github.com/donomii/bottom), not the current-state system monitor at [ClementTsang/bottom](https://github.com/ClementTsang/bottom). Release archives use the `bottom-events` package name while retaining the `bottom` command.
+
+## Install
+
+Tagged releases publish checksummed Linux, macOS, and Windows binaries for amd64 and arm64 at [https://github.com/donomii/bottom/releases](https://github.com/donomii/bottom/releases).
+
+Install from source with Go 1.24 or newer:
+
+```sh
+go install github.com/donomii/bottom@latest
+```
+
+The executable is installed in `GOBIN`, or in the `bin` directory under the path reported by `go env GOPATH` when `GOBIN` is unset. Add that directory to `PATH` to invoke `bottom` by name.
+
+From a checkout:
 
 ```sh
 ./run.sh
 ```
 
-## Build, Test, Demo, Install
+`run.sh` accepts the same options and commands as `bottom`.
+
+## Start in 30 seconds
+
+Print process history to the terminal:
+
+```sh
+bottom
+```
+
+Watch interactively while recording to SQLite:
+
+```sh
+bottom -tui -format sqlite -output bottom.sqlite
+```
+
+Find short-lived processes that exited with code 1 during the last 15 minutes:
+
+```sh
+bottom query -input bottom.sqlite -events stop -since 15m -max-duration 5s -exit-code 1
+```
+
+Trace only a command and its descendants, then create a Perfetto timeline:
+
+```sh
+bottom trace -output build.sqlite -perfetto build-trace.json -- make test
+```
+
+Summarize, replay, or compare recordings:
+
+```sh
+bottom report -input bottom.sqlite
+bottom replay -input bottom.sqlite -tui -speed 4
+bottom compare -before previous.sqlite -after current.sqlite
+```
+
+## What Bottom records
+
+- Best available process identity, PID, parent PID, executable, command, owner, first observation, and OS start time; PID-only fallbacks are identified in the platform table.
+- Parent ancestry captured before short-lived parents disappear.
+- Linux UID, TTY, session, cgroup, systemd unit, and container identity when visible.
+- Exit status when supplied by the backend.
+- Structured capture gaps and backend transitions so detected losses are explicit.
+- Versioned JSONL, CSV, and SQLite metadata for session, host, boot, sequence, schema, source timestamp, and observation timestamp.
+- Semantic restart churn grouped by executable, parent, owner, service, and container rather than volatile arguments.
+
+Text output uses full timestamps and one event per line:
+
+```text
+2026-07-09T12:00:01.123-07:00 start session=... seq=1 backend=poll process=421:... pid=421 ppid=22 uid=1000 user=jer exe="/usr/bin/compiler" cwd="/work" unit="" container="" cmd="compiler --input main.go" parent=22:shell
+2026-07-09T12:00:01.206-07:00 stop  session=... seq=2 backend=poll process=421:... pid=421 ppid=22 duration=83ms exit=0 uid=1000 user=jer exe="/usr/bin/compiler" unit="" container="" cmd="compiler --input main.go"
+2026-07-09T12:00:03.000-07:00 churn session=... seq=9 backend=poll count=5 window=10s exe="/usr/bin/compiler" unit="builder.service" container="" cmd="compiler --input main.go"
+```
+
+## Commands
+
+### `bottom` or `bottom record`
+
+Continuously record process lifecycle events. `bottom watch` is an alias.
+
+Capture and output:
+
+- `-backend auto` chooses the native Linux connector when available and otherwise uses native snapshot polling. Explicit values are `auto`, `poll`, and `linux-proc-connector`.
+- `-poll 100ms` sets the polling fallback interval.
+- `-format text` selects `text`, `jsonl`, `csv`, or `sqlite` output.
+- `-output PATH` appends to an owner-only output file. SQLite defaults to `bottom.sqlite`; other formats default to stdout.
+- `-tui` shows the interactive timeline. When `-output` is set, the same events are recorded simultaneously.
+- `-recorder-buffer 1024` bounds queued writes; a full queue stops with an accurate backpressure error rather than losing events silently.
+- `-sqlite-batch 128` sets the maximum events per SQLite transaction.
+- `-sqlite-flush 250ms` sets the maximum delay before writing a partial SQLite transaction.
+- `-retention 0` removes older SQLite rows when the recorder opens and the value is non-zero; zero retains all rows.
+- `-rotate-size 0` rotates text, JSONL, or CSV after this many bytes; zero disables size rotation.
+- `-rotate-interval 0` rotates text, JSONL, or CSV after this duration; zero disables time rotation.
+- `-redact TEXT` replaces exact matching text with `[REDACTED]` before any output; repeat it for multiple values. The default performs no rewriting.
+
+Filtering:
+
+- `-events all` keeps `start`, `exec`, `stop`, `churn`, `gap`, `all`, or the backward-compatible `both` alias.
+- `-include TEXT` keeps events whose searchable fields contain the text; repeat values are ORed.
+- `-exclude TEXT` removes matching events; repeat values are ORed.
+- `-include-regex EXPRESSION` and `-exclude-regex EXPRESSION` apply case-sensitive regular expressions to the original-case searchable fields.
+- `-user USER` matches a user name or numeric UID.
+- `-ppid PID` matches the immediate parent.
+- `-ancestor-pid PID` matches any captured ancestor.
+- `-cwd TEXT`, `-exe TEXT`, `-container TEXT`, and `-unit TEXT` filter their corresponding fields.
+- `-min-duration 0` and `-max-duration 0` limit stop events by lifetime; zero leaves that bound disabled.
+
+Capture-gap records always reach live outputs even when an ordinary process or event-kind filter would reject them, so filtering cannot make coverage appear complete.
+
+Restart-loop detection:
+
+- `-churn-window 10s` sets the sliding restart window.
+- `-churn-threshold 5` sets the number of short lifetimes needed for a report.
+- `-churn-cooldown 10s` sets the minimum interval between sustained reports for the same group.
+- `-churn-max-keys 4096` bounds retained process groups and evicts the oldest group when full.
+- `-churn-max-life 5s` sets the longest lifetime considered a restart; zero counts starts without waiting for stops.
+
+Triggered recording:
+
+- `-ring-buffer 0` retains this many pre-trigger events instead of writing immediately; zero disables triggered recording.
+- `-trigger churn` selects `churn`, `gap`, `failed-exit`, or `regex:EXPRESSION`.
+- `-post-trigger 10s` records this much activity after a trigger. Later triggers extend the window.
+
+Trigger decisions see the unfiltered event stream. Only events accepted by the output filters, plus mandatory capture gaps, reach the recording.
+
+Utilities:
+
+- `-h` prints help for recording, trace, query, replay, report, or compare and exits successfully; `bottom trace -h` does not require a `--` command boundary.
+- `-version` prints the build version, source commit, and build date, then exits.
+- `-test` runs deterministic built-in checks and exits.
+
+Tagged archives inject all version fields. Source-installed and checkout builds fall back to the Go module version and VCS revision when available; their build date remains `unknown` unless injected by the builder.
+
+### `bottom trace`
+
+Runs the command after the required `--`, records only that process and discovered descendants, and never acts on unrelated processes.
+
+- `-format sqlite` and `-output bottom-trace.sqlite` select the recording.
+- `-poll 10ms` sets descendant discovery frequency.
+- `-tail 2s` limits observation of surviving descendants after the root command exits; Bottom records a gap if the tail ends while descendants remain.
+- `-perfetto PATH` writes a new owner-only Perfetto-compatible JSON timeline. Empty disables export and its in-memory event retention. The recording and Perfetto paths must resolve to different files.
+- `-redact`, `-recorder-buffer`, `-sqlite-batch`, and `-sqlite-flush` behave as in recording mode.
+
+Trace rejects `-tui` because the traced command shares the terminal. Record to a file and use `bottom replay -tui` afterward. Once the command starts, Bottom waits for its natural exit even if recording fails; it does not alter the command or surviving descendants.
+
+### `bottom query`, `bottom replay`, and `bottom report`
+
+These commands open `-input bottom.sqlite` read-only and stream matching events without changing it. An output path that resolves to the input file is rejected.
+
+- `-since` and `-until` accept RFC3339 timestamps or durations before now such as `15m`.
+- `-exit-code CODE` matches an exact exit code, including zero.
+- The recording filters listed above are available for event kind, text, regex, owner, ancestry, context, and lifetime.
+- `-limit 0` bounds matching events when non-zero.
+- Query supports `-format text`, `jsonl`, or `csv` and optional `-output`.
+- Replay uses `-speed 1`, `-max-delay 1s`, and optional `-tui`. A zero maximum delay preserves the full recorded timing.
+- Report shows event totals, coverage gaps, failures, top executables, parent fan-out, ancestry edges, and shortest lifetimes.
+
+### `bottom compare`
+
+`-before before.sqlite` and `-after after.sqlite` are opened read-only and compare process fingerprints, ancestry, counts, failures, and average lifetimes. `-output` appends the report to an owner-only file; empty writes to stdout and paths resolving to either input are rejected.
+
+## Interactive controls
+
+TUI commands are entered followed by Return:
+
+- `p` pauses or resumes rendering while collection continues.
+- `k` and `j` move toward older and newer events.
+- `/text` searches event kind, process identity, command, executable, working directory, owner, context, PID, message, and captured ancestry fields; `clear` removes the search.
+- `d` toggles details for the selected event.
+- `?` toggles control help.
+
+The status line reports the active backend, capture gaps, pause state, search, and scroll position.
+Process-supplied terminal control bytes are displayed as visible hexadecimal escapes rather than executed by the terminal.
+
+## Platform support
+
+| Platform | Default source | Stable identity | Command line | Owner | Native event stream |
+|---|---|---:|---:|---:|---:|
+| Linux | Process connector with direct `/proc` fallback | Yes | Yes | UID and resolved name | Yes when the connector is available |
+| macOS | Native `sysctl` process snapshots | Yes | Yes when visible | UID and resolved name | No; native polling |
+| Windows | Native Tool Help snapshots and process handles | Yes when creation time is readable; PID fallback otherwise | Executable name | Not currently available | No; native polling |
+| Other Unix | `ps` snapshot fallback | PID only | Yes | Yes | No |
+
+Linux connector mode records direct fork, exec, and exit events, kernel-derived timestamps, receive overruns, sequence gaps, and periodic snapshot resynchronization. If connector setup fails in `auto` mode, Bottom writes a structured backend-transition gap and continues with `/proc` polling.
+
+Snapshot backends can miss a process that starts and exits entirely between snapshots. After capture starts, they emit structured gaps when a snapshot itself fails, but that cannot prove complete coverage between successful snapshots. An initial snapshot failure stops before capture. Use the Linux connector when complete short-process capture matters.
+
+## Recording formats and privacy
+
+JSONL and CSV contain versioned session start/end records plus event and gap records. SQLite schema version 4 contains `schema_migrations`, `sessions`, `events`, and `gaps`, normalized query columns, raw versioned event JSON, exact nanosecond time keys, and indexes for time, process, executable, parent, service, and container queries.
+
+New output files use mode `0600` on Unix. Existing destination permissions are preserved. Command arguments can contain credentials; use repeated `-redact` values when exact sensitive text must not be stored. Structural fields such as event kind, backend, and session identifiers are not rewritten because doing so would break queries and coverage classification.
+
+## Why Bottom
+
+| Tool category | Primary question |
+|---|---|
+| `top`, `htop`, and current-state dashboards | What is running now and consuming resources? |
+| [pspy](https://github.com/DominicBreuker/pspy) | What transient commands appeared on Linux? |
+| [forkstat](https://github.com/ColinIanKing/forkstat) | What fork, exec, and exit activity occurred on Linux? |
+| Bottom | What ran over time, who spawned it, how long did it live, where are the gaps, and how do two recordings differ? |
+
+Bottom deliberately does not duplicate CPU, RAM, disk, or network dashboards.
+
+Read-only means Bottom does not terminate, suspend, inject into, or otherwise alter monitored processes. Recording modes can write the output files requested by the user, and trace mode starts only the command explicitly supplied after `--`.
+
+## Build, test, benchmark, and install
 
 ```sh
 ./build.sh
 ./test.sh
+./benchmark.sh
 ./demo.sh
 ./install.sh
 ```
 
- `install.sh` installs the command through `go install`.
+- `build.sh` creates the `bottom` binary.
+- `test.sh` runs the Go tests and built-in checks.
+- `benchmark.sh` measures burst snapshot diffing and bounded high-cardinality churn handling.
+- `demo.sh` traces a finite self-test, writes SQLite and Perfetto recordings, and prints an ancestry report plus the artifact paths.
+- `install.sh` installs the command with `go install`.
 
-## Options
+GitHub Actions tests Linux, macOS, and Windows plus the Go race detector. Tags matching `v*` run the release workflow and produce `bottom-events` archives with checksums.
 
-
-- `-backend auto`: chooses the best available backend. Values are `auto`, `poll`, and `linux-proc-connector`.
-- `-poll 100ms`: sets the polling interval used by the polling backend and fallback mode. 
-- `-format text`: writes `text`, `jsonl`, `csv`, or `sqlite`.
-- `-output PATH`: writes output to a file. Empty output writes text, JSONL, and CSV to stdout. SQLite defaults to `bottom.sqlite`.
-- `-tui`: shows a live terminal timeline with recent events and top churners.
-- `-include TEXT`: shows only events that contains the text. 
-- `-exclude TEXT`: hides events matching the text. 
-- `-events both`: shows `start`, `stop`, `churn`, or `both`.
-- `-user USER`: shows events owned by one user name or numeric id.
-- `-ppid PID`: shows events whose immediate parent process has this pid.
-- `-cwd TEXT`: shows events whose current directory contains the text.
-- `-exe TEXT`: shows events whose executable path contains the text.
-- `-min-duration 0s`: for stop events, shows only processes that lived at least this long.
-- `-max-duration 0s`: for stop events, shows only processes that lived no longer than this.
-- `-churn-window 10s`: sets the time window used to group repeated command starts.
-- `-churn-threshold 5`: reports a churn event after this many starts inside the churn window.
-- `-test`: runs built-in checks for filtering, recorders, churn detection, and snapshot diffing.
-
-## Readouts
-
-Text output uses one line per event:
-
-```text
-12:00:01.123 start pid=421 ppid=22 user=jer cmd="compiler --input main.go" parent=22:shell
-12:00:02.456 stop  pid=421 duration=83ms exit= cmd="compiler --input main.go"
-12:00:03.000 churn count=5 window=10s cmd="compiler --input main.go"
-```
-
-- `start` means a process appeared.
-- `stop` means a process disappeared; duration is measured from the best available start time or first observation time.
-- `churn` means the same command started repeatedly inside the churn window.
-- `parent` shows the parent chain from immediate parent upward.
-
-## Backend Notes
-
-- Linux `auto` prefers `linux-proc-connector`, which subscribes to kernel process connector events and refreshes the process snapshot on each event.
-- Linux `poll` reads `/proc` directly and avoids shell helpers.
-- macOS and other Unix polling uses `ps`.
-- Windows polling uses WMI command output for process snapshots.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SPEC.md](SPEC.md), [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md), and [docs/repository-settings.md](docs/repository-settings.md).

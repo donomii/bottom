@@ -1,7 +1,13 @@
 process-monitor
 process-lifecycle
+process-events
+process-history
 procfs
-ebpf
 observability
 go
+cli
+tui
 terminal
+linux
+macos
+windows

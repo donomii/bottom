@@ -6,10 +6,12 @@ const (
 	BackendAuto               = "auto"
 	BackendPoll               = "poll"
 	BackendLinuxProcConnector = "linux-proc-connector"
+	BackendTrace              = "trace"
 )
 
 const (
 	EventStart EventKind = "start"
+	EventExec  EventKind = "exec"
 	EventStop  EventKind = "stop"
 	EventChurn EventKind = "churn"
 	EventGap   EventKind = "gap"
@@ -17,7 +19,10 @@ const (
 
 const (
 	EventModeBoth = "both"
+	EventModeAll  = "all"
 )
+
+const EventSchemaVersion = 1
 
 const (
 	FormatText   OutputFormat = "text"
@@ -37,39 +42,97 @@ type Config struct {
 	PollInterval   time.Duration
 	ChurnWindow    time.Duration
 	ChurnThreshold int
+	ChurnCooldown  time.Duration
+	ChurnMaxKeys   int
+	ChurnMaxLife   time.Duration
+	RecorderBuffer int
+	SQLiteBatch    int
+	SQLiteFlush    time.Duration
+	Retention      time.Duration
+	RotateSize     int64
+	RotateInterval time.Duration
+	Redact         []string
+	RingBuffer     int
+	Trigger        string
+	PostTrigger    time.Duration
 	TUI            bool
 	RunSelfTest    bool
+	ShowVersion    bool
 	Filter         Filter
 }
 
+type RecordingReadConfig struct {
+	InputPath  string
+	OutputPath string
+	Format     OutputFormat
+	Filter     Filter
+	Limit      int
+	Speed      float64
+	MaxDelay   time.Duration
+	TUI        bool
+}
+
+type RecordingCompareConfig struct {
+	BeforePath string
+	AfterPath  string
+	OutputPath string
+}
+
+type TraceConfig struct {
+	Recorder     Config
+	Command      []string
+	Tail         time.Duration
+	PerfettoPath string
+}
+
 type Process struct {
-	ID         string
-	PID        int
-	ParentPID  int
-	Command    string
-	Exe        string
-	Cwd        string
-	User       string
-	StartedAt  time.Time
-	CapturedAt time.Time
+	ID          string
+	PID         int
+	ParentPID   int
+	Command     string
+	Exe         string
+	Cwd         string
+	User        string
+	UID         string
+	TTY         string
+	Session     string
+	Cgroup      string
+	SystemdUnit string
+	ContainerID string
+	StartedAt   time.Time
+	CapturedAt  time.Time
 }
 
 type ProcessSummary struct {
-	PID     int    `json:"pid"`
-	Command string `json:"command"`
-	Exe     string `json:"exe,omitempty"`
-	User    string `json:"user,omitempty"`
+	PID       int    `json:"pid"`
+	ProcessID string `json:"process_id,omitempty"`
+	Command   string `json:"command"`
+	Exe       string `json:"exe,omitempty"`
+	User      string `json:"user,omitempty"`
 }
 
 type Event struct {
+	SchemaVersion  int              `json:"schema_version"`
+	SessionID      string           `json:"session_id,omitempty"`
+	Sequence       uint64           `json:"sequence,omitempty"`
+	Host           string           `json:"host,omitempty"`
+	BootID         string           `json:"boot_id,omitempty"`
 	Kind           EventKind        `json:"kind"`
 	Time           time.Time        `json:"time"`
+	ObservedAt     time.Time        `json:"observed_at,omitempty"`
+	ProcessID      string           `json:"process_id,omitempty"`
 	PID            int              `json:"pid,omitempty"`
 	ParentPID      int              `json:"parent_pid,omitempty"`
 	Command        string           `json:"command,omitempty"`
 	Exe            string           `json:"exe,omitempty"`
 	Cwd            string           `json:"cwd,omitempty"`
 	User           string           `json:"user,omitempty"`
+	UID            string           `json:"uid,omitempty"`
+	TTY            string           `json:"tty,omitempty"`
+	Session        string           `json:"session,omitempty"`
+	Cgroup         string           `json:"cgroup,omitempty"`
+	SystemdUnit    string           `json:"systemd_unit,omitempty"`
+	ContainerID    string           `json:"container_id,omitempty"`
 	DurationMillis int64            `json:"duration_ms,omitempty"`
 	ExitCode       *int             `json:"exit_code,omitempty"`
 	Backend        string           `json:"backend"`
@@ -82,20 +145,29 @@ type Event struct {
 type ProcessSnapshot map[string]Process
 
 type Filter struct {
-	Include     []string
-	Exclude     []string
-	User        string
-	CwdContains string
-	ExeContains string
-	ParentPID   int
-	EventMode   string
-	MinDuration time.Duration
-	MaxDuration time.Duration
+	Include           []string
+	Exclude           []string
+	IncludeRegex      []string
+	ExcludeRegex      []string
+	User              string
+	CwdContains       string
+	ExeContains       string
+	ContainerContains string
+	UnitContains      string
+	ParentPID         int
+	AncestorPID       int
+	EventMode         string
+	MinDuration       time.Duration
+	MaxDuration       time.Duration
+	Since             time.Time
+	Until             time.Time
+	HasExitCode       bool
+	ExitCode          int
 }
 
 func validEventMode(mode string) bool {
 	switch mode {
-	case string(EventStart), string(EventStop), string(EventChurn), EventModeBoth:
+	case string(EventStart), string(EventExec), string(EventStop), string(EventChurn), string(EventGap), EventModeBoth, EventModeAll:
 		return true
 	default:
 		return false

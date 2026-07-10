@@ -10,6 +10,10 @@ type LifecycleBackend interface {
 	Watch(context.Context, chan<- Event) error
 }
 
+func validBackendName(name string) bool {
+	return name == BackendAuto || name == BackendPoll || name == BackendLinuxProcConnector
+}
+
 func selectBackend(config Config) (LifecycleBackend, bool, error) {
 	switch config.Backend {
 	case BackendAuto:
