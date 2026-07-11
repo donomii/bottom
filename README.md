@@ -15,7 +15,7 @@ This is the lifecycle recorder at [donomii/bottom](https://github.com/donomii/bo
 
 Tagged releases publish checksummed Linux, macOS, and Windows binaries for amd64 and arm64 at [https://github.com/donomii/bottom/releases](https://github.com/donomii/bottom/releases).
 
-Install from source with Go 1.24 or newer:
+Install from source with Go 1.25 or newer:
 
 ```sh
 go install github.com/donomii/bottom@latest

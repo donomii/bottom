@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Updated the SQLite driver and system-call dependencies and moved the minimum Go version to 1.25.
 - Added Windows process-owner attribution using token SIDs with background account-name resolution.
 - Added native Windows command-line capture with executable-name fallback when access is unavailable.
 - Added bounded chronological query, replay, and report views across up to 64 explicitly supplied recordings.
