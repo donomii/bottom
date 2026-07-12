@@ -90,7 +90,7 @@ jobs:
           BUILD_DATE="$(git show -s --format=%cI HEAD)"
           ARCHIVE="bottom-events_${VERSION}_darwin_${GOARCH}.tar.gz"
           mkdir -p stage/docs stage/packaging/macos
-          CGO_ENABLED=1 go build -tags endpointsecurity -ldflags "-s -w -X main.version=${GITHUB_REF_NAME} -X main.commit=${GITHUB_SHA} -X main.buildDate=${BUILD_DATE}" -o stage/bottom .
+          CGO_ENABLED=1 go build -tags endpointsecurity -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${GITHUB_SHA} -X main.buildDate=${BUILD_DATE}" -o stage/bottom .
           cp LICENSE README.md CHANGELOG.md stage/
           cp docs/bottom.1 docs/endpoint-security.md stage/docs/
           cp packaging/macos/bottom.entitlements stage/packaging/macos/
