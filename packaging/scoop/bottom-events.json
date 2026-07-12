@@ -1,16 +1,16 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Read-only process lifecycle flight recorder",
   "homepage": "https://github.com/donomii/bottom",
   "license": "GPL-3.0-only",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/donomii/bottom/releases/download/v0.1.1/bottom-events_0.1.1_windows_amd64.zip",
-      "hash": "c8155aa36f0aef67f85194f202b997ff4a37f6957caef6bdeb4e174a6054afa2"
+      "url": "https://github.com/donomii/bottom/releases/download/v0.1.2/bottom-events_0.1.2_windows_amd64.zip",
+      "hash": "fe09100300dda6491e89f7703679e42750815deef8791c12c9b507ba36cd6236"
     },
     "arm64": {
-      "url": "https://github.com/donomii/bottom/releases/download/v0.1.1/bottom-events_0.1.1_windows_arm64.zip",
-      "hash": "f1317942b0e7ea2ac974f4d9991167dfed45438f1cc4ce1a40f00d346fa22940"
+      "url": "https://github.com/donomii/bottom/releases/download/v0.1.2/bottom-events_0.1.2_windows_arm64.zip",
+      "hash": "ffbb93a708d8dc4fb3a10c05e9f4e992b6415c80d7da945078bf81df89d208c5"
     }
   },
   "bin": "bottom.exe",
