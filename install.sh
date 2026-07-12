@@ -1,3 +1,7 @@
 #!/bin/sh
 set -eu
-go install .
+if [ "$(go env GOOS)" = darwin ]; then
+    go install -tags endpointsecurity .
+else
+    go install .
+fi

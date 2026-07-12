@@ -12,6 +12,8 @@ brew install --formula ./packaging/homebrew/bottom-events.rb
 
 The formula installs the command and `bottom(1)` manual page.
 
+The macOS archive includes the native Endpoint Security backend. It remains subject to Apple's entitlement, signing, Full Disk Access, and privilege requirements described in `docs/endpoint-security.md`; automatic backend selection falls back to polling when they are unavailable.
+
 ## Scoop
 
 The manifest at `packaging/scoop/bottom-events.json` supports Windows on amd64 and arm64. Install that manifest with `scoop install ./packaging/scoop/bottom-events.json` from a checkout.

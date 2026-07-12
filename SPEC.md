@@ -2,13 +2,15 @@
 
 ## Summary
 
-Bottom is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, and detected capture gaps.
+Bottom is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, correlated service restarts, and detected capture gaps. On Linux it also correlates exit status 137 with observed cgroup v2 `oom_kill` counter increases during the process lifetime.
 
 The default interaction is an event stream suitable for terminals and pipelines. Optional recorders persist human-readable events to text or versioned sessions to JSONL, CSV, and SQLite. Recorded sessions can be queried, replayed, summarized, compared, and visualized.
 
 The user runs `bottom completion` to write fish completions to standard output. The command explains the fish completion installation path through `bottom completion -h`. Release archives include the `bottom(1)` manual page, which lists commands, recording formats, default files, and where to find every option description.
 
 The repository includes checksum-pinned Homebrew and Scoop recipes under `packaging/`. Their package identifier is `bottom-events`, while the installed command remains `bottom`. Each recipe names a published version, exact platform archive URLs, and the corresponding release checksums.
+
+OpenTelemetry export is disabled by default. An explicit loopback OTLP/HTTP logs endpoint enables bounded background export; without that option Bottom creates no OpenTelemetry client and makes no export requests.
 
 ## User Interactions
 
@@ -21,7 +23,7 @@ With no options, Bottom:
 - selects the automatic process source;
 - uses a 100 millisecond polling fallback;
 - writes full-timestamp text events to standard output;
-- includes start, exec, stop, churn, and gap events;
+- includes start, exec, stop, churn, restart, and gap events;
 - treats processes lasting at most 5 seconds as restart-loop candidates;
 - keeps running until an operating-system interruption is received;
 - flushes and closes every recorder before exiting.
@@ -65,7 +67,7 @@ Reports and comparisons keep exact unique-name aggregates in automatically remov
 
 ### Capture and output
 
-- `backend`: `auto` by default; alternatives are `poll` and `linux-proc-connector`.
+- `backend`: `auto` by default; alternatives are `poll`, `linux-proc-connector`, `windows-etw`, and `macos-endpoint-security`. Platform-specific choices return an error on other operating systems. Automatic selection emits a gap and uses polling when the native event backend cannot start or later fails.
 - `poll_interval`: 100 milliseconds by default and must be positive.
 - `format`: text by default; alternatives are JSONL, CSV, and SQLite.
 - `output_path`: empty by default for text, JSONL, and CSV; SQLite defaults to `bottom.sqlite`.
@@ -77,12 +79,13 @@ Reports and comparisons keep exact unique-name aggregates in automatically remov
 - `rotate_size`: disabled at zero; a positive byte count rotates text, JSONL, or CSV output.
 - `rotate_interval`: disabled at zero; a positive duration rotates text, JSONL, or CSV output.
 - `redact`: empty by default; each repeated exact value is replaced with `[REDACTED]` in free-text and context fields before fan-out.
+- `otel_endpoint`: empty by default and makes no network requests. An explicit `http` or `https` URL must name `localhost` or a literal loopback address, include a port, and use `/v1/logs`; a missing path becomes `/v1/logs`. Export uses the recorder buffer, SQLite batch, and SQLite flush settings for bounded queue capacity, batch size, and partial-batch delay.
 
 Output rotation is rejected for SQLite. Retention is rejected for non-SQLite output. Rotation and triggered recording require an output path.
 
 ### Event filtering
 
-- `events`: all by default; accepts start, exec, stop, churn, gap, all, and the backward-compatible both alias.
+- `events`: all by default; accepts start, exec, stop, churn, restart, gap, all, and the backward-compatible both alias.
 - `include`: repeated case-insensitive literal alternatives; at least one must match when supplied.
 - `exclude`: repeated case-insensitive literal alternatives; any match rejects the event.
 - `include_regex`: repeated case-sensitive regular expressions matched against original-case text; at least one must match when supplied.
@@ -147,7 +150,7 @@ Capture-gap records bypass ordinary event filters so persisted coverage remains 
 - `sequence`: monotonically increasing event sequence inside a session.
 - `host`: host name.
 - `boot_id`: operating-system boot identity when available.
-- `kind`: start, exec, stop, churn, or gap.
+- `kind`: start, exec, stop, churn, restart, or gap.
 - `time`: best available source event time.
 - `observed_at`: time Bottom received or inferred the event.
 - `process_id`: stable process generation identity.
@@ -157,6 +160,8 @@ Capture-gap records bypass ordinary event filters so persisted coverage remains 
 - `backend`: process source that produced the event.
 - `count` and `window_ms`: churn or gap count and applicable window.
 - `message`: human-readable diagnostic or grouping explanation.
+
+A restart event copies the new process context, names the service unit and previous process in its message, counts correlated restarts in the last 30 seconds, and uses a 30 second window. A memory-pressure correlation remains a stop event and adds the observed cgroup `oom_kill` count and observation time to its message.
 
 ### Recording session
 
@@ -200,6 +205,20 @@ Bottom emits a gap and resynchronizes when it detects:
 
 Periodic resynchronization occurs between 1 and 30 seconds depending on the polling setting. A provisional connector identity may align with a stable snapshot identity only when one identity is explicitly provisional and their start times agree within tolerance. Two different stable identities always represent different process generations.
 
+### Windows ETW
+
+Bottom starts a private real-time system logger for the kernel process provider, subscribes before its initial native snapshot, and consumes start and end records through an event-record callback. It reads process and parent identifiers plus exact 32-bit exit status through Trace Data Helper properties, converts system-time event timestamps, enriches starts from native process handles, and keeps a stable process cache for exit attribution.
+
+The callback writes only to a bounded 4096-record queue. Queue overflow emits an exact dropped-record gap. A native snapshot reconciliation runs between 1 and 30 seconds based on the polling setting and repairs missed lifecycle state. Failure to create or consume the session returns an actionable Windows status; automatic selection records the failure and switches to polling.
+
+### macOS Endpoint Security
+
+Endpoint Security builds subscribe to notify-only fork, exec, and exit events before reading the initial native snapshot. Fork and exec records include stable start time, executable, command line, owner, session, terminal, and working directory when supplied by the framework. Exit wait status is decoded to the same process exit-code convention used by Linux.
+
+The callback copies each message into a bounded 4096-record queue without retaining framework-owned memory. Global sequence numbers are checked when present; older messages use per-kind sequences. A discontinuity or queue overflow emits a gap and triggers native snapshot reconciliation. Periodic reconciliation runs between 1 and 30 seconds.
+
+The macOS release archives contain this backend. Apple requires the `com.apple.developer.endpoint-security.client` entitlement, Full Disk Access, an entitled signing identity, and the privilege required by the installed macOS release. An explicit backend request returns the exact missing requirement. Automatic selection emits a gap and uses native polling when Endpoint Security cannot start. The source and signing procedure are documented in `docs/endpoint-security.md`; builds without CGO and the `endpointsecurity` build tag retain the same polling fallback.
+
 ### Platform snapshots
 
 - Linux reads `/proc` directly.
@@ -228,6 +247,12 @@ when the group limit is full, evict the least recently touched group
 
 Churn output retains the last process context, including parent, working directory, owner, service, container, and ancestry, so ordinary filters have the same meaning.
 
+## Local Correlation Behavior
+
+Bottom remembers a bounded set of at most 4096 systemd service units. A service start within 30 seconds after a stop for the same unit emits a restart event immediately. Restart counts retain only correlations inside the current 30 second window, and the least recently touched unit is removed when the bound is reached.
+
+On Linux, a dedicated background reader registers observed cgroup v2 paths and reads their `memory.events` files. Lifecycle handling performs no file input. When an `oom_kill` counter increases, the background reader stores its count and observation time. A later exit-status-137 stop is annotated only when that increase was observed during the process lifetime and for the same cgroup. Missing cgroup v2 files, unavailable counters, and unrelated status-137 exits remain unannotated.
+
 ## Triggered Recording Behavior
 
 Before activation, the recorder retains an ordered circular buffer containing at most the configured number of events. Trigger decisions observe every lifecycle event before output filtering. The trigger event causes retained values to be considered in original order, while ordinary output filters still prevent unrelated values from reaching a sink. Events are then considered through the post-trigger deadline. A later trigger extends the deadline. The next event after the deadline starts a newly armed ring. Closing an untriggered recorder discards its in-memory ring but still closes the session cleanly.
@@ -235,6 +260,8 @@ Before activation, the recorder retains an ordered circular buffer containing at
 ## Recorder Behavior
 
 Every persistent destination receives the same redacted Event value. The logical session wrapper fills missing event schema, session, sequence, host, boot, and observation fields. The asynchronous recorder has a fixed capacity and returns an actionable error when full; it never silently removes events.
+
+When a local OpenTelemetry endpoint is configured, a separate bounded recorder exports the redacted and filtered events as OTLP/HTTP JSON log records. Resource attributes identify Bottom, its version, host, operating system, and architecture. Log attributes retain event kind, backend, recording and process identities, process context, duration, exit code, counts, and diagnostic message. Integer values use OTLP's decimal-string JSON representation. Export uses a dedicated worker, a 5 second request timeout, no proxy, and surfaces encoding, transport, response-body, close, and non-2xx errors. Closing flushes the final partial batch.
 
 SQLite writes prepared batches in transactions, flushes partial batches on the configured interval and close, applies ordered migrations, validates newer schemas, enforces foreign keys, and indexes common session, time, identity, executable, parent, service, and container queries. Every event and gap time index uses a fixed-width UTC nanosecond key followed by sequence, so textual timestamp width and source time zone cannot change chronological order or range results.
 

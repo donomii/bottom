@@ -141,13 +141,13 @@ func TestParseConfigAcceptsStructuredEventModes(t *testing.T) {
 }
 
 func TestSelectBackendRejectsPlaceholderNames(t *testing.T) {
-	placeholderNames := []string{"linux-ebpf", "windows-wmi", "macos-endpoint-security"}
+	placeholderNames := []string{"linux-ebpf", "windows-wmi", "macos-kqueue-placeholder"}
 	for _, name := range placeholderNames {
 		_, _, err := selectBackend(Config{Backend: name, PollInterval: time.Millisecond})
 		if err == nil {
 			t.Fatalf("expected backend %q to be rejected", name)
 		}
-		if !strings.Contains(err.Error(), "auto, poll, or linux-proc-connector") {
+		if !strings.Contains(err.Error(), "auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security") {
 			t.Fatalf("expected backend error to list real choices, received %q", err.Error())
 		}
 	}

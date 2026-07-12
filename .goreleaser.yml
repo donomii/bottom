@@ -8,7 +8,6 @@ builds:
     env:
       - CGO_ENABLED=0
     goos:
-      - darwin
       - linux
       - windows
     goarch:
@@ -32,6 +31,8 @@ archives:
       - README.md
       - CHANGELOG.md
       - docs/bottom.1
+      - docs/endpoint-security.md
+      - packaging/macos/bottom.entitlements
 
 checksum:
   name_template: checksums.txt

@@ -65,6 +65,7 @@ type recordingReportSummary struct {
 	execCount        int
 	stopCount        int
 	churnCount       int
+	restartCount     int
 	gapCount         int
 	failures         int
 	shortest         []Event
@@ -175,6 +176,8 @@ func (summary *recordingReportSummary) incrementKind(kind EventKind) {
 		summary.stopCount++
 	case EventChurn:
 		summary.churnCount++
+	case EventRestart:
+		summary.restartCount++
 	case EventGap:
 		summary.gapCount++
 	}
@@ -217,6 +220,7 @@ func (summary *recordingReportSummary) write(writer io.Writer) error {
 		{kind: EventExec, count: summary.execCount},
 		{kind: EventStop, count: summary.stopCount},
 		{kind: EventChurn, count: summary.churnCount},
+		{kind: EventRestart, count: summary.restartCount},
 		{kind: EventGap, count: summary.gapCount},
 	} {
 		builder.WriteString(fmt.Sprintf("%8d  %s\n", item.count, item.kind))

@@ -58,7 +58,7 @@ func TestSQLiteRecordingRejectsInvalidNormalizedTimesAndKinds(t *testing.T) {
 		kind     EventKind
 		expected string
 	}{
-		{name: "unknown event kind", kind: EventKind("unknown"), expected: "expected start, exec, stop, or churn"},
+		{name: "unknown event kind", kind: EventKind("unknown"), expected: "expected start, exec, stop, churn, or restart"},
 		{name: "gap in events table", kind: EventGap, expected: "gap kind is not valid in the events table"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

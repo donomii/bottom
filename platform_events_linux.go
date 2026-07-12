@@ -67,6 +67,10 @@ func NewNamedEventBackend(config Config) (LifecycleBackend, error) {
 	switch config.Backend {
 	case BackendLinuxProcConnector:
 		return LinuxProcConnectorBackend{interval: config.PollInterval}, nil
+	case BackendWindowsETW:
+		return nil, fmt.Errorf("windows-etw backend is only available in Windows builds; this build target is Linux")
+	case BackendMacOSEndpoint:
+		return nil, fmt.Errorf("macos-endpoint-security backend is only available in macOS builds; this build target is Linux")
 	default:
 		return nil, fmt.Errorf("unknown event backend %q", config.Backend)
 	}
@@ -247,14 +251,6 @@ func applyConnectorNotice(ctx context.Context, backendName string, events chan<-
 
 func connectorProcessID(pid int, timestampNS uint64) string {
 	return fmt.Sprintf("connector:%d:%d", pid, timestampNS)
-}
-
-func removeProcessByPID(snapshot ProcessSnapshot, pid int) {
-	for id, proc := range snapshot {
-		if proc.PID == pid {
-			delete(snapshot, id)
-		}
-	}
 }
 
 func findProcessEntryByPID(snapshot ProcessSnapshot, pid int) (string, Process, bool) {

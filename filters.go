@@ -70,7 +70,7 @@ func (filter Filter) Accepts(event Event) bool {
 
 func (filter Filter) acceptsKind(kind EventKind) bool {
 	if filter.EventMode == "" || filter.EventMode == EventModeBoth || filter.EventMode == EventModeAll {
-		return kind == EventStart || kind == EventExec || kind == EventStop || kind == EventChurn || kind == EventGap
+		return kind == EventStart || kind == EventExec || kind == EventStop || kind == EventChurn || kind == EventRestart || kind == EventGap
 	}
 	return string(kind) == filter.EventMode
 }

@@ -22,6 +22,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go test ./...
+      - if: runner.os == 'macOS'
+        run: go test -tags endpointsecurity ./...
       - run: go vet ./...
       - run: go run . -test
 
@@ -35,11 +37,9 @@ jobs:
           cache: true
       - run: go test -race ./...
 
-  release:
+  build-portable:
     needs: [test, race]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -53,6 +53,72 @@ jobs:
         with:
           distribution: goreleaser
           version: v2.17.0
-          args: release --clean
+          args: release --clean --skip=publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-portable
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  build-darwin:
+    needs: [test, race]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: amd64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -tags endpointsecurity ./...
+      - name: Build Endpoint Security archive
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_DATE="$(git show -s --format=%cI HEAD)"
+          ARCHIVE="bottom-events_${VERSION}_darwin_${GOARCH}.tar.gz"
+          mkdir -p stage/docs stage/packaging/macos
+          CGO_ENABLED=1 go build -tags endpointsecurity -ldflags "-s -w -X main.version=${GITHUB_REF_NAME} -X main.commit=${GITHUB_SHA} -X main.buildDate=${BUILD_DATE}" -o stage/bottom .
+          cp LICENSE README.md CHANGELOG.md stage/
+          cp docs/bottom.1 docs/endpoint-security.md stage/docs/
+          cp packaging/macos/bottom.entitlements stage/packaging/macos/
+          tar -C stage -czf "${ARCHIVE}" bottom LICENSE README.md CHANGELOG.md docs/bottom.1 docs/endpoint-security.md packaging/macos/bottom.entitlements
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-darwin-${{ matrix.arch }}
+          path: bottom-events_*_darwin_${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [build-portable, build-darwin]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Publish checksummed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum bottom-events_*.tar.gz bottom-events_*.zip | sort > checksums.txt
+          gh release create "${GITHUB_REF_NAME}" bottom-events_*.tar.gz bottom-events_*.zip checksums.txt --verify-tag --title "${GITHUB_REF_NAME}" --generate-notes

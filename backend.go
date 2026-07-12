@@ -11,7 +11,7 @@ type LifecycleBackend interface {
 }
 
 func validBackendName(name string) bool {
-	return name == BackendAuto || name == BackendPoll || name == BackendLinuxProcConnector
+	return name == BackendAuto || name == BackendPoll || name == BackendLinuxProcConnector || name == BackendWindowsETW || name == BackendMacOSEndpoint
 }
 
 func selectBackend(config Config) (LifecycleBackend, bool, error) {
@@ -30,7 +30,13 @@ func selectBackend(config Config) (LifecycleBackend, bool, error) {
 			return nil, false, err
 		}
 		return backend, false, nil
+	case BackendWindowsETW, BackendMacOSEndpoint:
+		backend, err := NewNamedEventBackend(config)
+		if err != nil {
+			return nil, false, err
+		}
+		return backend, false, nil
 	default:
-		return nil, false, fmt.Errorf("backend must be auto, poll, or linux-proc-connector, received %q", config.Backend)
+		return nil, false, fmt.Errorf("backend must be auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security, received %q", config.Backend)
 	}
 }

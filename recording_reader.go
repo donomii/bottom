@@ -365,7 +365,7 @@ func validateVersionedEventJSON(value string, path string) error {
 
 func validStoredEventKind(kind EventKind) bool {
 	switch kind {
-	case EventStart, EventExec, EventStop, EventChurn, EventGap:
+	case EventStart, EventExec, EventStop, EventChurn, EventRestart, EventGap:
 		return true
 	default:
 		return false
@@ -384,7 +384,7 @@ func (row sqliteRecordingRow) validateNormalizedKind(path string) error {
 		return fmt.Errorf("validate normalized event kind from process recording %q: gap kind is not valid in the events table", path)
 	}
 	if !validStoredEventKind(kind) {
-		return fmt.Errorf("validate normalized event kind from process recording %q: expected start, exec, stop, or churn, received %q", path, kind)
+		return fmt.Errorf("validate normalized event kind from process recording %q: expected start, exec, stop, churn, or restart, received %q", path, kind)
 	}
 	return nil
 }

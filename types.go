@@ -6,15 +6,18 @@ const (
 	BackendAuto               = "auto"
 	BackendPoll               = "poll"
 	BackendLinuxProcConnector = "linux-proc-connector"
+	BackendWindowsETW         = "windows-etw"
+	BackendMacOSEndpoint      = "macos-endpoint-security"
 	BackendTrace              = "trace"
 )
 
 const (
-	EventStart EventKind = "start"
-	EventExec  EventKind = "exec"
-	EventStop  EventKind = "stop"
-	EventChurn EventKind = "churn"
-	EventGap   EventKind = "gap"
+	EventStart   EventKind = "start"
+	EventExec    EventKind = "exec"
+	EventStop    EventKind = "stop"
+	EventChurn   EventKind = "churn"
+	EventRestart EventKind = "restart"
+	EventGap     EventKind = "gap"
 )
 
 const (
@@ -52,6 +55,7 @@ type Config struct {
 	RotateSize     int64
 	RotateInterval time.Duration
 	Redact         []string
+	OTelEndpoint   string
 	RingBuffer     int
 	Trigger        string
 	PostTrigger    time.Duration
@@ -167,7 +171,7 @@ type Filter struct {
 
 func validEventMode(mode string) bool {
 	switch mode {
-	case string(EventStart), string(EventExec), string(EventStop), string(EventChurn), string(EventGap), EventModeBoth, EventModeAll:
+	case string(EventStart), string(EventExec), string(EventStop), string(EventChurn), string(EventRestart), string(EventGap), EventModeBoth, EventModeAll:
 		return true
 	default:
 		return false

@@ -53,28 +53,55 @@ func newRecorderWithOptions(config Config, options recorderOptions) (Recorder, e
 		}
 		return newFilteringRecorder(target, config.Filter)
 	}
-	if config.TUI && config.OutputPath == "" {
-		return prepareSink(NewTUIRecorder(os.Stdout)), nil
+	targets := []Recorder{}
+	if config.TUI {
+		targets = append(targets, prepareSink(NewTUIRecorder(os.Stdout)))
 	}
-	outputRecorder, err := newOutputRecorder(config.Format, config.OutputPath, session, options)
-	if err != nil {
-		return nil, err
-	}
-	outputTarget := prepareSink(outputRecorder)
-	if config.RingBuffer > 0 {
-		trigger, err := newEventTrigger(config.Trigger)
+	if !config.TUI || config.OutputPath != "" {
+		outputRecorder, err := newOutputRecorder(config.Format, config.OutputPath, session, options)
 		if err != nil {
 			return nil, err
 		}
-		outputTarget = newTriggeredRecorder(outputTarget, config.RingBuffer, config.PostTrigger, trigger)
+		outputTarget := prepareSink(outputRecorder)
+		if config.RingBuffer > 0 {
+			trigger, err := newEventTrigger(config.Trigger)
+			if err != nil {
+				return nil, joinRecorderErrors(err, outputTarget.Close())
+			}
+			outputTarget = newTriggeredRecorder(outputTarget, config.RingBuffer, config.PostTrigger, trigger)
+		}
+		if options.bufferSize > 0 {
+			outputTarget = newBufferedRecorder(outputTarget, options.bufferSize, options.flushInterval)
+		}
+		targets = append(targets, outputTarget)
 	}
-	if options.bufferSize > 0 {
-		outputTarget = newBufferedRecorder(outputTarget, options.bufferSize, options.flushInterval)
+	if config.OTelEndpoint != "" {
+		otelTarget, err := newOTelRecorder(config.OTelEndpoint, session, options)
+		if err != nil {
+			return nil, joinRecorderErrors(err, closeRecorderTargets(targets))
+		}
+		preparedOTelTarget := prepareSink(otelTarget)
+		if config.RingBuffer > 0 {
+			trigger, err := newEventTrigger(config.Trigger)
+			if err != nil {
+				return nil, joinRecorderErrors(err, preparedOTelTarget.Close(), closeRecorderTargets(targets))
+			}
+			preparedOTelTarget = newTriggeredRecorder(preparedOTelTarget, config.RingBuffer, config.PostTrigger, trigger)
+		}
+		targets = append(targets, preparedOTelTarget)
 	}
-	if !config.TUI {
-		return outputTarget, nil
+	if len(targets) == 1 {
+		return targets[0], nil
 	}
-	return newMultiRecorder(prepareSink(NewTUIRecorder(os.Stdout)), outputTarget), nil
+	return newMultiRecorder(targets...), nil
+}
+
+func closeRecorderTargets(targets []Recorder) error {
+	errs := make([]error, 0, len(targets))
+	for _, target := range targets {
+		errs = append(errs, target.Close())
+	}
+	return joinRecorderErrors(errs...)
 }
 
 func newOutputRecorder(format OutputFormat, path string, session recordingSession, options recorderOptions) (Recorder, error) {
@@ -169,6 +196,8 @@ func formatTextEvent(event Event) string {
 		return fmt.Sprintf("%s process=%s pid=%d ppid=%d duration=%s exit=%s uid=%s user=%s exe=%q unit=%q container=%q cmd=%q", prefix, event.ProcessID, event.PID, event.ParentPID, time.Duration(event.DurationMillis)*time.Millisecond, formatExitCode(event.ExitCode), event.UID, event.User, event.Exe, event.SystemdUnit, event.ContainerID, event.Command)
 	case EventChurn:
 		return fmt.Sprintf("%s count=%d window=%s exe=%q unit=%q container=%q cmd=%q", prefix, event.Count, time.Duration(event.WindowMillis)*time.Millisecond, event.Exe, event.SystemdUnit, event.ContainerID, event.Command)
+	case EventRestart:
+		return fmt.Sprintf("%s count=%d window=%s exe=%q unit=%q container=%q cmd=%q message=%q", prefix, event.Count, time.Duration(event.WindowMillis)*time.Millisecond, event.Exe, event.SystemdUnit, event.ContainerID, event.Command, event.Message)
 	case EventGap:
 		return fmt.Sprintf("%s message=%q", prefix, event.Message)
 	default:

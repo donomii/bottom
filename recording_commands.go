@@ -135,7 +135,7 @@ func bindRecordingFilterFlags(flagset *flag.FlagSet, filter *Filter, values *rec
 	flagset.StringVar(&filter.UnitContains, "unit", "", "keep events whose system service unit contains this text")
 	flagset.IntVar(&filter.ParentPID, "ppid", 0, "keep events with this immediate parent process id")
 	flagset.IntVar(&filter.AncestorPID, "ancestor-pid", 0, "keep events descended from this process id")
-	flagset.StringVar(&filter.EventMode, "events", filter.EventMode, "event kind: start, exec, stop, churn, gap, all, or both")
+	flagset.StringVar(&filter.EventMode, "events", filter.EventMode, "event kind: start, exec, stop, churn, restart, gap, all, or both")
 	flagset.DurationVar(&filter.MinDuration, "min-duration", 0, "keep stop events with at least this lifetime")
 	flagset.DurationVar(&filter.MaxDuration, "max-duration", 0, "keep stop events with no more than this lifetime")
 	flagset.StringVar(&values.since, "since", "", "keep events after this RFC3339 timestamp or duration before now, such as 15m")
@@ -169,7 +169,7 @@ func finalizeRecordingFilter(filter *Filter, values recordingFilterFlags, now ti
 		return fmt.Errorf("minimum duration %s must not exceed maximum duration %s", filter.MinDuration, filter.MaxDuration)
 	}
 	if !validEventMode(filter.EventMode) {
-		return fmt.Errorf("events must be start, exec, stop, churn, gap, all, or both, received %q", filter.EventMode)
+		return fmt.Errorf("events must be start, exec, stop, churn, restart, gap, all, or both, received %q", filter.EventMode)
 	}
 	for _, expression := range append(append([]string{}, filter.IncludeRegex...), filter.ExcludeRegex...) {
 		if _, err := regexp.Compile(expression); err != nil {

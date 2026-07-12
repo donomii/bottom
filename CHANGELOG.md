@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 - 2026-07-11
 
 - Added Windows process-owner attribution using token SIDs with background account-name resolution.
 - Added native Windows command-line capture with executable-name fallback when access is unavailable.
+- Added native Windows ETW process start and exit capture with exact exit status, bounded delivery, and periodic reconciliation.
+- Added an entitlement-gated macOS Endpoint Security backend with native fork, exec, and exit capture, sequence-gap reporting, documented signing requirements, and polling fallback.
 - Added bounded chronological query, replay, and report views across up to 64 explicitly supplied recordings.
+- Added disabled-by-default local OTLP/HTTP log export with bounded background batching and loopback-only endpoint validation.
+- Added immediate systemd service-restart events and Linux cgroup v2 memory-pressure exit correlation.
 - Added checksum-pinned Homebrew and Scoop recipes using the `bottom-events` package identifier.
+- Added native macOS release builds for Intel and Apple silicon alongside portable Linux and Windows archives.
 
 ## 0.1.1 - 2026-07-10
 

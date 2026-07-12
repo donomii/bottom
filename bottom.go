@@ -48,6 +48,7 @@ func parseConfig(args []string) (Config, error) {
 		RecorderBuffer: 1024,
 		SQLiteBatch:    128,
 		SQLiteFlush:    250 * time.Millisecond,
+		OTelEndpoint:   "",
 		Trigger:        "churn",
 		PostTrigger:    10 * time.Second,
 		Filter: Filter{
@@ -61,7 +62,7 @@ func parseConfig(args []string) (Config, error) {
 	var redact listFlag
 	format := string(config.Format)
 	flagset := flag.NewFlagSet("bottom", flag.ContinueOnError)
-	flagset.StringVar(&config.Backend, "backend", config.Backend, "process source: auto, poll, or linux-proc-connector")
+	flagset.StringVar(&config.Backend, "backend", config.Backend, "process source: auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security")
 	flagset.Var(&include, "include", "show events whose command, executable path, current directory, user, or parent chain contains this text; may be repeated")
 	flagset.Var(&exclude, "exclude", "hide events whose command, executable path, current directory, user, or parent chain contains this text; may be repeated")
 	flagset.Var(&includeRegex, "include-regex", "show events whose searchable fields match this regular expression; may be repeated")
@@ -73,7 +74,7 @@ func parseConfig(args []string) (Config, error) {
 	flagset.StringVar(&config.Filter.UnitContains, "unit", "", "show events whose system service unit contains this text")
 	flagset.IntVar(&config.Filter.ParentPID, "ppid", 0, "show events whose immediate parent process has this pid")
 	flagset.IntVar(&config.Filter.AncestorPID, "ancestor-pid", 0, "show events descended from this process id")
-	flagset.StringVar(&config.Filter.EventMode, "events", config.Filter.EventMode, "event kinds to show: start, exec, stop, churn, gap, all, or both")
+	flagset.StringVar(&config.Filter.EventMode, "events", config.Filter.EventMode, "event kinds to show: start, exec, stop, churn, restart, gap, all, or both")
 	flagset.DurationVar(&config.Filter.MinDuration, "min-duration", 0, "show stop events only when the process lived at least this long")
 	flagset.DurationVar(&config.Filter.MaxDuration, "max-duration", 0, "show stop events only when the process lived no longer than this")
 	flagset.DurationVar(&config.PollInterval, "poll", config.PollInterval, "polling interval used by the polling backend and fallback mode")
@@ -92,6 +93,7 @@ func parseConfig(args []string) (Config, error) {
 	flagset.Int64Var(&config.RotateSize, "rotate-size", 0, "rotate text, JSONL, or CSV output after this many bytes; zero disables size rotation")
 	flagset.DurationVar(&config.RotateInterval, "rotate-interval", 0, "rotate text, JSONL, or CSV output after this duration; zero disables time rotation")
 	flagset.Var(&redact, "redact", "replace this exact text with [REDACTED] in recorded fields; may be repeated and defaults to no redaction")
+	flagset.StringVar(&config.OTelEndpoint, "otel-endpoint", config.OTelEndpoint, "local OTLP/HTTP logs endpoint, such as http://127.0.0.1:4318/v1/logs; empty disables OpenTelemetry and makes no requests")
 	flagset.IntVar(&config.RingBuffer, "ring-buffer", 0, "retain this many pre-trigger events and write them only when the trigger fires; zero disables triggered recording")
 	flagset.StringVar(&config.Trigger, "trigger", config.Trigger, "ring-buffer trigger: churn, gap, failed-exit, or regex:EXPRESSION")
 	flagset.DurationVar(&config.PostTrigger, "post-trigger", config.PostTrigger, "recording time retained after a ring-buffer trigger fires")
@@ -99,7 +101,7 @@ func parseConfig(args []string) (Config, error) {
 	flagset.BoolVar(&config.ShowVersion, "version", false, "print the bottom version and exit")
 	flagset.Usage = func() {
 		fmt.Fprintf(flagset.Output(), "Usage: bottom [options]\n\n")
-		fmt.Fprintf(flagset.Output(), "bottom records process start, exec, stop, churn, and capture-gap events. With no options it prints text to stdout.\n\n")
+		fmt.Fprintf(flagset.Output(), "bottom records process start, exec, stop, churn, restart, and capture-gap events. With no options it prints text to stdout.\n\n")
 		flagset.PrintDefaults()
 	}
 	if err := flagset.Parse(args); err != nil {
@@ -115,7 +117,7 @@ func parseConfig(args []string) (Config, error) {
 	config.Redact = []string(redact)
 	config.Format = OutputFormat(format)
 	if !validBackendName(config.Backend) {
-		return Config{}, fmt.Errorf("backend must be auto, poll, or linux-proc-connector, received %q", config.Backend)
+		return Config{}, fmt.Errorf("backend must be auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security, received %q", config.Backend)
 	}
 	if config.PollInterval <= 0 {
 		return Config{}, fmt.Errorf("poll interval must be positive, received %s", config.PollInterval)
@@ -177,7 +179,7 @@ func parseConfig(args []string) (Config, error) {
 		}
 	}
 	if !validEventMode(config.Filter.EventMode) {
-		return Config{}, fmt.Errorf("events must be start, exec, stop, churn, gap, all, or both, received %q", config.Filter.EventMode)
+		return Config{}, fmt.Errorf("events must be start, exec, stop, churn, restart, gap, all, or both, received %q", config.Filter.EventMode)
 	}
 	if !validOutputFormat(config.Format) {
 		return Config{}, fmt.Errorf("format must be text, jsonl, csv, or sqlite, received %q", config.Format)
@@ -199,6 +201,9 @@ func parseConfig(args []string) (Config, error) {
 	}
 	if config.RingBuffer > 0 && config.OutputPath == "" {
 		return Config{}, fmt.Errorf("output path is required when triggered ring-buffer recording is enabled")
+	}
+	if _, err := normalizeOTelEndpoint(config.OTelEndpoint); err != nil {
+		return Config{}, err
 	}
 	if config.RingBuffer == 0 && (config.Trigger != "churn" || config.PostTrigger != 10*time.Second) {
 		return Config{}, fmt.Errorf("ring buffer must be positive when trigger or post-trigger differs from its default")
@@ -248,6 +253,7 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 		}
 	}
 	churn := NewConfiguredChurnDetector(config)
+	correlations := newEventCorrelator(ctx, config.PollInterval)
 	events := make(chan Event, 256)
 	backendErrors := make(chan error, 1)
 	startBackend(ctx, backend, events, backendErrors)
@@ -256,11 +262,17 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 		case <-ctx.Done():
 			return nil
 		case event := <-events:
+			event, correlated := correlations.Observe(event)
 			if event.Kind == EventGap {
 				logBackendDiagnostic(logger, event)
 			}
 			if err := recorder.Write(event); err != nil {
 				return err
+			}
+			for _, correlation := range correlated {
+				if err := recorder.Write(correlation); err != nil {
+					return err
+				}
 			}
 			if churnEvent, ok := churn.Observe(event); ok {
 				if err := recorder.Write(churnEvent); err != nil {

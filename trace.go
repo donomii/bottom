@@ -76,6 +76,7 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 	flagset.IntVar(&config.Recorder.SQLiteBatch, "sqlite-batch", config.Recorder.SQLiteBatch, "maximum SQLite trace events written in one transaction")
 	flagset.DurationVar(&config.Recorder.SQLiteFlush, "sqlite-flush", config.Recorder.SQLiteFlush, "maximum delay before a partial SQLite trace transaction is written")
 	flagset.Var(&redact, "redact", "replace this exact text with [REDACTED] in recorded fields; may be repeated and defaults to no redaction")
+	flagset.StringVar(&config.Recorder.OTelEndpoint, "otel-endpoint", "", "local OTLP/HTTP logs endpoint, such as http://127.0.0.1:4318/v1/logs; empty disables OpenTelemetry and makes no requests")
 	if err := flagset.Parse(optionArgs); err != nil {
 		return TraceConfig{}, err
 	}
@@ -116,6 +117,9 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 	}
 	if config.Recorder.RecorderBuffer <= 0 || config.Recorder.SQLiteBatch <= 0 || config.Recorder.SQLiteFlush <= 0 {
 		return TraceConfig{}, fmt.Errorf("bottom trace recorder settings must be positive, received buffer=%d batch=%d flush=%s", config.Recorder.RecorderBuffer, config.Recorder.SQLiteBatch, config.Recorder.SQLiteFlush)
+	}
+	if _, err := normalizeOTelEndpoint(config.Recorder.OTelEndpoint); err != nil {
+		return TraceConfig{}, fmt.Errorf("bottom trace: %w", err)
 	}
 	return config, nil
 }

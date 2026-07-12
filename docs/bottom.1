@@ -1,4 +1,4 @@
-.TH BOTTOM 1 "2026-07-10" "bottom 0.1.1" "User Commands"
+.TH BOTTOM 1 "2026-07-11" "bottom 0.1.2" "User Commands"
 .SH NAME
 bottom \- record process lifecycle events
 .SH SYNOPSIS
@@ -14,7 +14,7 @@ bottom \- record process lifecycle events
 ]
 .SH DESCRIPTION
 .B bottom
-is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, and detected capture gaps. Recordings can be queried, replayed, summarized, compared, and exported as a Perfetto timeline.
+is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, correlated service restarts, and detected capture gaps. Recordings can be queried, replayed, summarized, compared, exported as a Perfetto timeline, and sent as OTLP/HTTP logs to an explicitly configured local collector.
 .PP
 With no command, bottom behaves like
 .BR "bottom record" .
@@ -61,6 +61,23 @@ The
 .B -input
 option may be repeated up to 64 times for query, replay, and report. Events are merged by time, sequence, and input order. Without this option, those commands read
 .IR bottom.sqlite .
+.PP
+The
+.B -backend
+option defaults to auto. Native choices are
+.BR linux-proc-connector ,
+.BR windows-etw ,
+and
+.BR macos-endpoint-security ;
+.B poll
+selects native process-table polling directly. Auto records a capture gap and falls back to polling when a platform event source is unavailable.
+.PP
+The
+.B -otel-endpoint
+option defaults to empty, which disables OpenTelemetry and makes no export requests. Set it to a local OTLP/HTTP logs URL such as
+.IR http://127.0.0.1:4318/v1/logs .
+The host must be localhost or a loopback address, the port is required, and the path must be
+.IR /v1/logs .
 .SH RECORDING FORMATS
 Text output is intended for terminals. JSONL and CSV contain versioned session, event, and gap records. SQLite schema version 4 supports indexed queries, replay, reports, and comparisons.
 .SH FILES
@@ -77,6 +94,14 @@ Fish completion installation path.
 bottom observes processes but does not act on them. New recording files request owner-only access. Use repeated
 .B -redact
 options to replace exact sensitive values before recording.
+.PP
+The macOS Endpoint Security backend requires Apple's
+.B com.apple.developer.endpoint-security.client
+entitlement, an entitled signature, Full Disk Access, and the privilege required by the installed macOS release. Release archives include
+.I docs/endpoint-security.md
+and
+.I packaging/macos/bottom.entitlements
+with the signing procedure. Auto mode falls back to polling when those requirements are absent.
 .SH SEE ALSO
 .BR ps (1),
 .BR sqlite3 (1)

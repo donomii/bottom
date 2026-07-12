@@ -41,5 +41,13 @@ func sameProcessGeneration(first Process, second Process) bool {
 }
 
 func provisionalProcessID(id string) bool {
-	return strings.HasPrefix(id, "connector:") || strings.HasPrefix(id, "trace:")
+	return strings.HasPrefix(id, "connector:") || strings.HasPrefix(id, "es:") || strings.HasPrefix(id, "etw:") || strings.HasPrefix(id, "trace:")
+}
+
+func removeProcessByPID(snapshot ProcessSnapshot, pid int) {
+	for id, proc := range snapshot {
+		if proc.PID == pid {
+			delete(snapshot, id)
+		}
+	}
 }

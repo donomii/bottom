@@ -224,8 +224,11 @@ func (recorder *TUIRecorder) visibleEvents() ([]Event, *Event) {
 func tuiEventLine(event Event) string {
 	user := sanitizeTerminalText(valueOrDash(event.User))
 	command := event.Command
-	if event.Kind == EventChurn {
+	if event.Kind == EventChurn || event.Kind == EventRestart {
 		command = fmt.Sprintf("%s (%d events in %s)", event.Command, event.Count, time.Duration(event.WindowMillis)*time.Millisecond)
+	}
+	if event.Kind == EventRestart && event.Message != "" {
+		command = event.Message
 	}
 	if event.Kind == EventGap {
 		command = event.Message
