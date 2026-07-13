@@ -225,6 +225,8 @@ func run(config Config, logger *log.Logger) (runErr error) {
 }
 
 func runWithContext(ctx context.Context, config Config, logger *log.Logger) (runErr error) {
+	runContext, stopRun := context.WithCancel(ctx)
+	defer stopRun()
 	backend, fallbackAllowed, err := selectBackend(config)
 	selectionErr := err
 	if err != nil {
@@ -236,7 +238,9 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 	}
 	recorderConfig := config
 	recorderConfig.Backend = backend.Name()
-	recorder, err := newRecorder(recorderConfig)
+	recorderOptions := recorderOptionsFromConfig(recorderConfig)
+	recorderOptions.tuiStop = stopRun
+	recorder, err := newRecorderWithOptions(recorderConfig, recorderOptions)
 	if err != nil {
 		return err
 	}
@@ -253,13 +257,13 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 		}
 	}
 	churn := NewConfiguredChurnDetector(config)
-	correlations := newEventCorrelator(ctx, config.PollInterval)
+	correlations := newEventCorrelator(runContext, config.PollInterval)
 	events := make(chan Event, 256)
 	backendErrors := make(chan error, 1)
-	startBackend(ctx, backend, events, backendErrors)
+	startBackend(runContext, backend, events, backendErrors)
 	for {
 		select {
-		case <-ctx.Done():
+		case <-runContext.Done():
 			return nil
 		case event := <-events:
 			event, correlated := correlations.Observe(event)
@@ -294,7 +298,7 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 				}
 				backend = NewPollingBackend(config.PollInterval)
 				fallbackAllowed = false
-				startBackend(ctx, backend, events, backendErrors)
+				startBackend(runContext, backend, events, backendErrors)
 			} else {
 				return err
 			}

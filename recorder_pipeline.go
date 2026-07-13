@@ -26,6 +26,7 @@ type recorderOptions struct {
 	retention       time.Duration
 	rotation        rotationOptions
 	redact          []string
+	tuiStop         func()
 }
 
 type rotationOptions struct {

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added immediate TUI navigation, editable search, adaptive sizing, column layouts, and sortable views with a line-oriented fallback.
+- Added natural-exit lifecycle smoke checks for polling on every platform and native Linux and Windows event sources.
+- Added release-note generation from the matching changelog section, per-archive SPDX JSON SBOMs, and keyless GitHub build provenance.
+- Published checksum-pinned recipes through the `donomii/homebrew-tap` and `donomii/scoop-bucket` repositories.
+- Updated the demo, platform documentation, completion metadata, contributor guidance, and supported-version policy.
+
 ## 0.1.2 - 2026-07-11
 
 - Added Windows process-owner attribution using token SIDs with background account-name resolution.

@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes target the latest commit on the default branch until tagged releases exist.
+Security fixes target the latest tagged release and the default branch. Users should run the latest release because process capture and recording validation fixes are not backported indefinitely.
 
 ## Reporting
 

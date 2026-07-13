@@ -14,6 +14,7 @@
     }
   },
   "bin": "bottom.exe",
+  "notes": "The windows-etw backend requires permission to create a Windows ETW system logger. Automatic capture reports an unavailable ETW session and uses native polling when permission is absent.",
   "checkver": {
     "github": "https://github.com/donomii/bottom"
   },

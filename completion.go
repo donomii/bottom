@@ -40,7 +40,7 @@ var (
 )
 
 var completionOptions = []completionOption{
-	completionValueOption("backend", "Select auto, poll, or linux-proc-connector capture", recordCompletionCommands),
+	completionValueOption("backend", "Select auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security capture", recordCompletionCommands),
 	completionValueOption("include", "Keep events containing this text; repeatable", filterCompletionCommands),
 	completionValueOption("exclude", "Remove events containing this text; repeatable", filterCompletionCommands),
 	completionValueOption("include-regex", "Keep events matching this expression; repeatable", filterCompletionCommands),
@@ -74,7 +74,7 @@ var completionOptions = []completionOption{
 	completionValueOption("rotate-size", "Rotate text output after this many bytes", recordCompletionCommands),
 	completionValueOption("rotate-interval", "Rotate text output after this duration", recordCompletionCommands),
 	completionValueOption("redact", "Replace this exact recorded text; repeatable", recorderCompletionCommands),
-	completionValueOption("otel-endpoint", "Export OTLP/HTTP logs to an explicit local collector", recordCompletionCommands),
+	completionValueOption("otel-endpoint", "Export OTLP/HTTP logs to an explicit local collector", recorderCompletionCommands),
 	completionValueOption("ring-buffer", "Retain this many events before a trigger", recordCompletionCommands),
 	completionValueOption("trigger", "Select churn, gap, failed-exit, or regex trigger", recordCompletionCommands),
 	completionValueOption("post-trigger", "Keep recording for this duration after a trigger", recordCompletionCommands),

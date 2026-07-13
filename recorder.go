@@ -55,12 +55,12 @@ func newRecorderWithOptions(config Config, options recorderOptions) (Recorder, e
 	}
 	targets := []Recorder{}
 	if config.TUI {
-		targets = append(targets, prepareSink(NewTUIRecorder(os.Stdout)))
+		targets = append(targets, prepareSink(newTUIRecorder(os.Stdout, options.tuiStop)))
 	}
 	if !config.TUI || config.OutputPath != "" {
 		outputRecorder, err := newOutputRecorder(config.Format, config.OutputPath, session, options)
 		if err != nil {
-			return nil, err
+			return nil, joinRecorderErrors(err, closeRecorderTargets(targets))
 		}
 		outputTarget := prepareSink(outputRecorder)
 		if config.RingBuffer > 0 {

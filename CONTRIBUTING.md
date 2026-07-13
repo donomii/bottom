@@ -4,14 +4,14 @@ Thanks for helping with bottom.
 
 ## Development
 
-```sh
+```fish
 ./test.sh
 ./benchmark.sh
 ```
 
 `./test.sh` runs `go vet ./...`, `go test ./...`, and `go run . -test`.
 
-Before submitting a platform change, run the native test suite on that platform. CI builds and tests Linux, macOS, and Windows; Linux also runs race coverage.
+Before submitting a platform change, run the native test suite on that platform. CI builds and tests Linux, macOS, and Windows, exercises natural-exit polling on every platform and native event delivery on Linux and Windows, runs Linux race coverage, and verifies portable release SBOM generation.
 
 ## Pull Requests
 
@@ -26,7 +26,7 @@ Before submitting a platform change, run the native test suite on that platform.
 ## Source Map
 
 - `backend_poll.go` and `lifecycle_helpers.go`: snapshot lifecycle and stable identity.
-- `platform_events_linux.go`: direct Linux connector lifecycle events.
+- `platform_events_linux.go`, `platform_events_windows_etw.go`, and `platform_events_darwin_endpoint.go`: native lifecycle events and reconciliation.
 - `snapshot_*.go`: native platform snapshots.
 - `recorder*.go`: output pipelines, session metadata, SQLite, rotation, retention, redaction, and triggers.
 - `recording_*.go`: query, report, replay, and comparison.
@@ -36,7 +36,12 @@ Before submitting a platform change, run the native test suite on that platform.
 ## Contribution-Sized Work
 
 - Add fixture coverage for unusual macOS process argument layouts.
-- Add Windows owner lookup through the existing background identity resolver.
-- Add a native event source for macOS or Windows while retaining polling fallback and structured gaps.
-- Add Fish, POSIX-shell, and PowerShell completion generation.
-- Add package recipes after the first tagged release establishes stable archive URLs.
+- Add unusual macOS process-argument fixtures and signed Endpoint Security smoke coverage.
+- Add POSIX-shell and PowerShell completion generation alongside Fish.
+- Add automatic release updates for the public Homebrew tap and Scoop bucket without broad repository credentials.
+- Add follow mode for querying an active SQLite recording.
+- Add terminal-width and key-sequence fixtures for the interactive timeline.
+
+## Releases
+
+Before tagging, replace the `Unreleased` changelog heading with the exact version and date, such as `## 0.2.0 - 2026-07-13`. The release workflow runs `go run ./tools/releasenotes`; it refuses to publish a tag without a nonempty matching changelog section. Published archives include checksums, SPDX JSON SBOMs, and GitHub build provenance.

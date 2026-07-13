@@ -18,6 +18,32 @@ is a read-only process lifecycle recorder. It records process starts, executable
 .PP
 With no command, bottom behaves like
 .BR "bottom record" .
+.SH INTERACTIVE TIMELINE
+On an interactive terminal, controls act immediately. Press
+.B p
+to pause,
+.B k
+or
+.B j
+to move through events,
+.B d
+for selected-event details,
+.B c
+to cycle command, context, and executable columns,
+.B s
+to cycle timeline, duration, PID, and command ordering,
+.B x
+to clear search, and
+.B ?
+for help.
+.PP
+Press slash to edit a search. Return applies it, Escape cancels it, Backspace deletes, and Ctrl-U clears the draft. The display adapts to terminal resizing. If raw terminal input is unavailable, the same controls are accepted as line commands followed by Return; use
+.B columns
+and
+.B sort
+for those cycles.
+.PP
+Ctrl-C or Ctrl-D stops bottom itself without acting on any monitored process.
 .SH COMMANDS
 .TP
 .B record

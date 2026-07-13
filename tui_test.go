@@ -56,3 +56,61 @@ func TestTUIProcessGroupsKeepSemanticContext(t *testing.T) {
 		t.Fatalf("expected distinct semantic process groups, received first=%q second=%q", first, second)
 	}
 }
+
+func TestTUIImmediateKeysEditSearchAndCycleViews(t *testing.T) {
+	var output bytes.Buffer
+	recorder := NewTUIRecorder(&output)
+	recorder.handleKey('/')
+	for _, key := range "worker" {
+		recorder.handleKey(key)
+	}
+	recorder.handleKey('\r')
+	recorder.handleKey('c')
+	recorder.handleKey('s')
+	if recorder.search != "worker" || recorder.searching {
+		t.Fatalf("expected immediate search to apply, received search=%q searching=%t", recorder.search, recorder.searching)
+	}
+	if recorder.columns != tuiColumnsContext || recorder.sortMode != tuiSortDuration {
+		t.Fatalf("expected context columns and duration sort, received columns=%s sort=%s", recorder.columnName(), recorder.sortName())
+	}
+	recorder.handleKey('x')
+	if recorder.search != "" {
+		t.Fatalf("expected immediate search clear, received %q", recorder.search)
+	}
+}
+
+func TestTUISortsEventsWithoutChangingStoredOrder(t *testing.T) {
+	recorder := NewTUIRecorder(&bytes.Buffer{})
+	recorder.events = []Event{
+		{Kind: EventStop, PID: 2, Command: "short", DurationMillis: 10},
+		{Kind: EventStop, PID: 1, Command: "long", DurationMillis: 50},
+	}
+	recorder.sortMode = tuiSortDuration
+	filtered := recorder.filteredEvents()
+	if filtered[0].Command != "long" || recorder.events[0].Command != "short" {
+		t.Fatalf("expected sorted view without changing stored timeline, received view=%q stored=%q", filtered[0].Command, recorder.events[0].Command)
+	}
+}
+
+func TestTUIAdaptsVisibleRowsAndCommandWidth(t *testing.T) {
+	recorder := NewTUIRecorder(&bytes.Buffer{})
+	recorder.width = 60
+	recorder.height = 18
+	if limit := recorder.visibleEventLimit(); limit != 3 {
+		t.Fatalf("expected compact terminal to show three events, received %d", limit)
+	}
+	line := recorder.eventLine(Event{Kind: EventStart, Command: strings.Repeat("x", 80)})
+	if utf8.RuneCountInString(line) > recorder.width {
+		t.Fatalf("expected event line to fit width %d, received width %d line=%q", recorder.width, utf8.RuneCountInString(line), line)
+	}
+}
+
+func TestTUIControlKeyStopsItsOwnRunContext(t *testing.T) {
+	stops := 0
+	recorder := newTUIRecorder(&bytes.Buffer{}, func() { stops++ })
+	recorder.handleKey(0x03)
+	recorder.handleKey(0x04)
+	if stops != 1 || recorder.status != "stopping" {
+		t.Fatalf("expected one TUI stop request, received stops=%d status=%q", stops, recorder.status)
+	}
+}

@@ -250,13 +250,15 @@ func filteredRecordingEvents(config RecordingReadConfig) ([]Event, error) {
 }
 
 func runRecordingReplay(ctx context.Context, config RecordingReadConfig) error {
+	replayContext, stopReplay := context.WithCancel(ctx)
+	defer stopReplay()
 	stream, err := openRecordingFileEventStream("bottom replay", config.InputPaths, config.Filter, config.Limit)
 	if err != nil {
 		return err
 	}
 	var recorder Recorder = textRecorder{writer: os.Stdout}
 	if config.TUI {
-		recorder = NewTUIRecorder(os.Stdout)
+		recorder = newTUIRecorder(os.Stdout, stopReplay)
 	}
 	var previous time.Time
 	readErr := stream.Stream(func(event Event) error {
@@ -268,7 +270,7 @@ func runRecordingReplay(ctx context.Context, config RecordingReadConfig) error {
 			if config.MaxDelay > 0 && delay > config.MaxDelay {
 				delay = config.MaxDelay
 			}
-			if err := waitForReplay(ctx, delay); err != nil {
+			if err := waitForReplay(replayContext, delay); err != nil {
 				return err
 			}
 		}

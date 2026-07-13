@@ -23,6 +23,16 @@ jobs:
       - run: go test ./...
       - if: runner.os == 'macOS'
         run: go test -tags endpointsecurity ./...
+      - name: Polling lifecycle smoke
+        run: go test -tags smoke -run "^TestPollingLifecycleSmoke$" -v
+      - name: Linux native lifecycle smoke
+        if: runner.os == 'Linux'
+        run: |
+          go test -c -tags smoke -o bottom-smoke.test .
+          sudo ./bottom-smoke.test -test.v -test.run "^TestNativeLifecycleSmoke$"
+      - name: Windows native lifecycle smoke
+        if: runner.os == 'Windows'
+        run: go test -tags smoke -run "^TestNativeLifecycleSmoke$" -v
       - run: go vet ./...
       - run: go run . -test
 
@@ -35,3 +45,24 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go test -race ./...
+
+  release-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.46.0
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: v2.17.0
+          args: release --snapshot --clean --skip=publish
+      - name: Verify portable release SBOMs
+        run: test "$(find dist -maxdepth 1 -name '*.sbom.json' | wc -l | tr -d ' ')" = 4

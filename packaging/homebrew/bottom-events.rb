@@ -31,6 +31,15 @@ class BottomEvents < Formula
     man1.install "docs/bottom.1"
   end
 
+  def caveats
+    <<~EOS
+      The macOS Endpoint Security backend requires an Apple-granted entitlement,
+      an entitled signature, Full Disk Access, and the required privilege. Without
+      them, automatic capture reports the missing requirement and uses native polling.
+      See https://github.com/donomii/bottom/blob/master/docs/endpoint-security.md
+    EOS
+  end
+
   test do
     assert_match(/bottom v?0\.1\.2/, shell_output("#{bin}/bottom version"))
   end

@@ -8,7 +8,9 @@ The default interaction is an event stream suitable for terminals and pipelines.
 
 The user runs `bottom completion` to write fish completions to standard output. The command explains the fish completion installation path through `bottom completion -h`. Release archives include the `bottom(1)` manual page, which lists commands, recording formats, default files, and where to find every option description.
 
-The repository includes checksum-pinned Homebrew and Scoop recipes under `packaging/`. Their package identifier is `bottom-events`, while the installed command remains `bottom`. Each recipe names a published version, exact platform archive URLs, and the corresponding release checksums.
+The repository includes checksum-pinned Homebrew and Scoop recipes under `packaging/` and publishes them through `donomii/homebrew-tap` and `donomii/scoop-bucket`. Their package identifier is `bottom-events`, while the installed command remains `bottom`. Each recipe names a published version, exact platform archive URLs, and the corresponding release checksums.
+
+Release notes are extracted from the matching version section in `CHANGELOG.md`; a tag without a nonempty matching section cannot be published. Each release archive has an SPDX JSON software bill of materials. SHA-256 checksums cover archives and SBOM documents, and GitHub keyless provenance attestations identify the release workflow that produced them.
 
 OpenTelemetry export is disabled by default. An explicit loopback OTLP/HTTP logs endpoint enables bounded background export; without that option Bottom creates no OpenTelemetry client and makes no export requests.
 
@@ -28,7 +30,7 @@ With no options, Bottom:
 - keeps running until an operating-system interruption is received;
 - flushes and closes every recorder before exiting.
 
-The user runs `bottom -tui` for an interactive timeline. If `-output` is also set, the same redacted event value is sent to the TUI and persistent recorder.
+The user runs `bottom -tui` for an interactive timeline. If `-output` is also set, the same redacted event value is sent to the TUI and persistent recorder. On an interactive terminal, `p`, `k`, `j`, `d`, `c`, `s`, `x`, and `?` act immediately. Slash begins editable search; Return applies it, Escape cancels it, Backspace removes a character, and Ctrl-U clears the draft. Ctrl-C or Ctrl-D cancels Bottom's own recording or replay context without acting on monitored processes. Column cycling selects command, context, or executable layouts. Sort cycling selects arrival timeline, duration, PID, or command. The display recalculates visible rows and text width when the terminal size changes. If raw input cannot be enabled, equivalent line commands remain available and require Return.
 
 The user runs `bottom -h`, `bottom trace -h`, `bottom query -h`, `bottom replay -h`, `bottom report -h`, or `bottom compare -h` to print command-specific help and exit successfully. Trace help does not require a command boundary. The user runs `bottom -test` to execute deterministic built-in checks and exit. The user runs `bottom -version` or `bottom version` to print the build version, source commit, and build date, then exit. Tagged builds inject all three fields. Other builds use the Go module version and VCS revision when available; their build date remains unknown unless the builder injects it.
 

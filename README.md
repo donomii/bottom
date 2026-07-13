@@ -7,7 +7,7 @@
 
 Bottom is a read-only process lifecycle flight recorder for transient commands, restart loops, and process ancestry. It records start, exec, stop, churn, and capture-gap events to the terminal, JSONL, CSV, SQLite, or an interactive timeline.
 
-![Bottom process lifecycle flight recorder](docs/social-preview.png)
+![Bottom recording and reporting process history](docs/demo.gif)
 
 This is the lifecycle recorder at [donomii/bottom](https://github.com/donomii/bottom), not the current-state system monitor at [ClementTsang/bottom](https://github.com/ClementTsang/bottom). Release archives use the `bottom-events` package name while retaining the `bottom` command.
 
@@ -15,9 +15,22 @@ This is the lifecycle recorder at [donomii/bottom](https://github.com/donomii/bo
 
 Tagged releases publish checksummed Linux, macOS, and Windows binaries for amd64 and arm64 at [https://github.com/donomii/bottom/releases](https://github.com/donomii/bottom/releases).
 
-Install from source with Go 1.24 or newer:
+Install with Homebrew:
 
-```sh
+```fish
+brew install donomii/tap/bottom-events
+```
+
+Install with Scoop:
+
+```text
+scoop bucket add donomii https://github.com/donomii/scoop-bucket
+scoop install bottom-events
+```
+
+Install from source with Go 1.25 or newer:
+
+```fish
 go install github.com/donomii/bottom@latest
 ```
 
@@ -25,7 +38,7 @@ The executable is installed in `GOBIN`, or in the `bin` directory under the path
 
 From a checkout:
 
-```sh
+```fish
 ./run.sh
 ```
 
@@ -35,31 +48,31 @@ From a checkout:
 
 Print process history to the terminal:
 
-```sh
+```fish
 bottom
 ```
 
 Watch interactively while recording to SQLite:
 
-```sh
+```fish
 bottom -tui -format sqlite -output bottom.sqlite
 ```
 
 Find short-lived processes that exited with code 1 during the last 15 minutes:
 
-```sh
+```fish
 bottom query -input bottom.sqlite -events stop -since 15m -max-duration 5s -exit-code 1
 ```
 
 Trace only a command and its descendants, then create a Perfetto timeline:
 
-```sh
+```fish
 bottom trace -output build.sqlite -perfetto build-trace.json -- make test
 ```
 
 Summarize, replay, or compare recordings:
 
-```sh
+```fish
 bottom report -input bottom.sqlite
 bottom replay -input bottom.sqlite -tui -speed 4
 bottom compare -before previous.sqlite -after current.sqlite
@@ -91,7 +104,7 @@ Continuously record process lifecycle events. `bottom watch` is an alias.
 
 Capture and output:
 
-- `-backend auto` chooses the native Linux connector when available and otherwise uses native snapshot polling. Explicit values are `auto`, `poll`, and `linux-proc-connector`.
+- `-backend auto` chooses the native event source for the current platform and otherwise uses native snapshot polling. Explicit values are `auto`, `poll`, `linux-proc-connector`, `windows-etw`, and `macos-endpoint-security`.
 - `-poll 100ms` sets the polling fallback interval.
 - `-format text` selects `text`, `jsonl`, `csv`, or `sqlite` output.
 - `-output PATH` appends to an owner-only output file. SQLite defaults to `bottom.sqlite`; other formats default to stdout.
@@ -103,6 +116,7 @@ Capture and output:
 - `-rotate-size 0` rotates text, JSONL, or CSV after this many bytes; zero disables size rotation.
 - `-rotate-interval 0` rotates text, JSONL, or CSV after this duration; zero disables time rotation.
 - `-redact TEXT` replaces exact matching text with `[REDACTED]` before any output; repeat it for multiple values. The default performs no rewriting.
+- `-otel-endpoint URL` exports OTLP/HTTP logs to an explicit loopback collector. Empty disables OpenTelemetry and makes no network requests.
 
 Filtering:
 
@@ -150,7 +164,7 @@ Runs the command after the required `--`, records only that process and discover
 - `-poll 10ms` sets descendant discovery frequency.
 - `-tail 2s` limits observation of surviving descendants after the root command exits; Bottom records a gap if the tail ends while descendants remain.
 - `-perfetto PATH` writes a new owner-only Perfetto-compatible JSON timeline. Empty disables export and its in-memory event retention. The recording and Perfetto paths must resolve to different files.
-- `-redact`, `-recorder-buffer`, `-sqlite-batch`, and `-sqlite-flush` behave as in recording mode.
+- `-redact`, `-recorder-buffer`, `-sqlite-batch`, `-sqlite-flush`, and `-otel-endpoint` behave as in recording mode.
 
 Trace rejects `-tui` because the traced command shares the terminal. Record to a file and use `bottom replay -tui` afterward. Once the command starts, Bottom waits for its natural exit even if recording fails; it does not alter the command or surviving descendants.
 
@@ -172,15 +186,20 @@ These commands open `-input bottom.sqlite` read-only and stream matching events 
 
 ## Interactive controls
 
-TUI commands are entered followed by Return:
+TUI navigation keys act immediately:
 
 - `p` pauses or resumes rendering while collection continues.
 - `k` and `j` move toward older and newer events.
-- `/text` searches event kind, process identity, command, executable, working directory, owner, context, PID, message, and captured ancestry fields; `clear` removes the search.
+- `/` edits a search for event kind, process identity, command, executable, working directory, owner, context, PID, message, and captured ancestry fields. Return applies it, Escape cancels it, Backspace deletes, and Ctrl-U clears the draft.
+- `x` clears the active search.
 - `d` toggles details for the selected event.
+- `c` cycles command, context, and executable column layouts.
+- `s` cycles timeline, duration, PID, and command ordering.
+- Ctrl-C or Ctrl-D stops Bottom itself without acting on any monitored process.
 - `?` toggles control help.
 
-The status line reports the active backend, capture gaps, pause state, search, and scroll position.
+The display adapts its rows and command width to terminal resizing. If raw terminal input is unavailable, the same controls remain available as line commands followed by Return; use `columns` and `sort` for those two cycles.
+The status line reports the active backend, capture gaps, pause state, search, scroll position, columns, and ordering.
 Process-supplied terminal control bytes are displayed as visible hexadecimal escapes rather than executed by the terminal.
 
 ## Platform support
@@ -188,11 +207,11 @@ Process-supplied terminal control bytes are displayed as visible hexadecimal esc
 | Platform | Default source | Stable identity | Command line | Owner | Native event stream |
 |---|---|---:|---:|---:|---:|
 | Linux | Process connector with direct `/proc` fallback | Yes | Yes | UID and resolved name | Yes when the connector is available |
-| macOS | Native `sysctl` process snapshots | Yes | Yes when visible | UID and resolved name | No; native polling |
-| Windows | Native Tool Help snapshots and process handles | Yes when creation time is readable; PID fallback otherwise | Executable name | Not currently available | No; native polling |
+| macOS | Endpoint Security with native `sysctl` fallback | Yes | Yes when visible | UID and resolved name | Yes when the signed binary has Apple's entitlement, Full Disk Access, and required privilege |
+| Windows | ETW with native Tool Help fallback | Yes when creation time is readable; PID fallback otherwise | Yes when visible; executable fallback | SID and resolved account name | Yes when ETW session creation is permitted |
 | Other Unix | `ps` snapshot fallback | PID only | Yes | Yes | No |
 
-Linux connector mode records direct fork, exec, and exit events, kernel-derived timestamps, receive overruns, sequence gaps, and periodic snapshot resynchronization. If connector setup fails in `auto` mode, Bottom writes a structured backend-transition gap and continues with `/proc` polling.
+Native event modes record direct lifecycle events, exact exit status when supplied, detected losses, and periodic snapshot reconciliation. If native setup fails in `auto` mode, Bottom writes a structured backend-transition gap and continues with platform-native polling. The macOS requirements and signing procedure are documented in [docs/endpoint-security.md](docs/endpoint-security.md).
 
 Snapshot backends can miss a process that starts and exits entirely between snapshots. After capture starts, they emit structured gaps when a snapshot itself fails, but that cannot prove complete coverage between successful snapshots. An initial snapshot failure stops before capture. Use the Linux connector when complete short-process capture matters.
 
@@ -217,7 +236,7 @@ Read-only means Bottom does not terminate, suspend, inject into, or otherwise al
 
 ## Build, test, benchmark, and install
 
-```sh
+```fish
 ./build.sh
 ./test.sh
 ./benchmark.sh
@@ -231,6 +250,6 @@ Read-only means Bottom does not terminate, suspend, inject into, or otherwise al
 - `demo.sh` traces a finite self-test, writes SQLite and Perfetto recordings, and prints an ancestry report plus the artifact paths.
 - `install.sh` installs the command with `go install`.
 
-GitHub Actions tests Linux, macOS, and Windows plus the Go race detector. Tags matching `v*` run the release workflow and produce `bottom-events` archives with checksums.
+GitHub Actions tests Linux, macOS, and Windows, runs natural-exit lifecycle smoke checks, the Go race detector, and a portable release/SBOM snapshot. Tags matching `v*` run the release workflow and produce `bottom-events` archives with checksums, SPDX JSON SBOMs, and GitHub provenance attestations.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SPEC.md](SPEC.md), [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md), and [docs/repository-settings.md](docs/repository-settings.md).
