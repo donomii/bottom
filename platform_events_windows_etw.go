@@ -31,21 +31,20 @@ const (
 )
 
 var (
-	advapi32                      = windows.NewLazySystemDLL("advapi32.dll")
-	tdhDLL                        = windows.NewLazySystemDLL("tdh.dll")
-	procStartTraceW               = advapi32.NewProc("StartTraceW")
-	procStopTraceW                = advapi32.NewProc("StopTraceW")
-	procOpenTraceW                = advapi32.NewProc("OpenTraceW")
-	procProcessTrace              = advapi32.NewProc("ProcessTrace")
-	procCloseTrace                = advapi32.NewProc("CloseTrace")
-	procTdhGetPropertySize        = tdhDLL.NewProc("TdhGetPropertySize")
-	procTdhGetProperty            = tdhDLL.NewProc("TdhGetProperty")
-	windowsProcessProviderGUID    = windows.GUID{Data1: 0x3d6fa8d0, Data2: 0xfe05, Data3: 0x11d0, Data4: [8]byte{0x9d, 0xda, 0x00, 0xc0, 0x4f, 0xd7, 0xba, 0x7c}}
-	windowsSystemTraceControlGUID = windows.GUID{Data1: 0x9e814aad, Data2: 0x3204, Data3: 0x11d2, Data4: [8]byte{0x9a, 0x82, 0x00, 0x60, 0x08, 0xa8, 0x69, 0x39}}
-	windowsETWCallback            = windows.NewCallback(windowsETWEventCallback)
-	windowsETWHandlers            = map[uintptr]*windowsETWHandler{}
-	windowsETWHandlersMutex       sync.RWMutex
-	windowsETWNextHandlerID       uint64 = 1
+	advapi32                   = windows.NewLazySystemDLL("advapi32.dll")
+	tdhDLL                     = windows.NewLazySystemDLL("tdh.dll")
+	procStartTraceW            = advapi32.NewProc("StartTraceW")
+	procStopTraceW             = advapi32.NewProc("StopTraceW")
+	procOpenTraceW             = advapi32.NewProc("OpenTraceW")
+	procProcessTrace           = advapi32.NewProc("ProcessTrace")
+	procCloseTrace             = advapi32.NewProc("CloseTrace")
+	procTdhGetPropertySize     = tdhDLL.NewProc("TdhGetPropertySize")
+	procTdhGetProperty         = tdhDLL.NewProc("TdhGetProperty")
+	windowsProcessProviderGUID = windows.GUID{Data1: 0x3d6fa8d0, Data2: 0xfe05, Data3: 0x11d0, Data4: [8]byte{0x9d, 0xda, 0x00, 0xc0, 0x4f, 0xd7, 0xba, 0x7c}}
+	windowsETWCallback         = windows.NewCallback(windowsETWEventCallback)
+	windowsETWHandlers         = map[uintptr]*windowsETWHandler{}
+	windowsETWHandlersMutex    sync.RWMutex
+	windowsETWNextHandlerID    uint64 = 1
 )
 
 type windowsETWBackend struct {
@@ -399,11 +398,15 @@ func startWindowsETWSession(handler *windowsETWHandler) (*windowsETWSession, err
 	if err != nil {
 		return nil, fmt.Errorf("encode Windows ETW session name: %w", err)
 	}
+	sessionGUID, err := windows.GenerateGUID()
+	if err != nil {
+		return nil, fmt.Errorf("generate private Windows ETW system logger GUID for session %q: %w", windows.UTF16ToString(name), err)
+	}
 	propertyBytes := int(unsafe.Sizeof(etwProperties{}))
 	properties := make([]uint16, propertyBytes/2+len(name))
 	property := (*etwProperties)(unsafe.Pointer(&properties[0]))
 	property.Wnode.BufferSize = uint32(len(properties) * 2)
-	property.Wnode.GUID = windowsSystemTraceControlGUID
+	property.Wnode.GUID = sessionGUID
 	property.Wnode.ClientContext = etwClockSystemTime
 	property.Wnode.Flags = etwWnodeTracedGUID
 	property.LogFileMode = etwRealTimeMode | etwSystemLoggerMode
