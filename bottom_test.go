@@ -99,7 +99,7 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	if config.PollInterval != 100*time.Millisecond {
 		t.Fatalf("expected default poll interval 100ms, received %s", config.PollInterval)
 	}
-	if config.Filter.EventMode != EventModeAll || config.RecorderBuffer != 1024 || config.SQLiteBatch != 128 || config.SQLiteFlush != 250*time.Millisecond {
+	if config.Filter.EventMode != EventModeAll || config.RecorderBuffer != 1024 {
 		t.Fatalf("expected documented default event and recorder settings, received %#v", config)
 	}
 	config, err = parseConfig([]string{"-poll", "25ms"})
@@ -113,8 +113,7 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 
 func TestParseConfigRejectsInvalidCrossOptionCombinations(t *testing.T) {
 	cases := [][]string{
-		{"-format", "sqlite", "-rotate-size", "1024"},
-		{"-format", "jsonl", "-retention", "1h"},
+		{"-format", "binary"},
 		{"-include-regex", "["},
 		{"unexpected"},
 		{"-min-duration", "2s", "-max-duration", "1s"},

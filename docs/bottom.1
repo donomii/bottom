@@ -14,7 +14,7 @@ bottom \- record process lifecycle events
 ]
 .SH DESCRIPTION
 .B bottom
-is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, correlated service restarts, and detected capture gaps. Recordings can be queried, replayed, summarized, compared, exported as a Perfetto timeline, and sent as OTLP/HTTP logs to an explicitly configured local collector.
+is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, correlated service restarts, and detected capture gaps. Recordings can be queried, replayed, summarized, compared, and exported as a Perfetto timeline.
 .PP
 With no command, bottom behaves like
 .BR "bottom record" .
@@ -59,16 +59,16 @@ Start one command directly and record it and its observed descendants. Options m
 separator.
 .TP
 .B query
-Filter one or more SQLite recordings and render text, JSONL, or CSV.
+Filter one or more JSONL recordings and render text, JSONL, or CSV.
 .TP
 .B replay
-Replay one or more SQLite recordings with merged timing or through the terminal interface.
+Replay one or more JSONL recordings with merged timing or through the terminal interface.
 .TP
 .B report
 Summarize sessions, event kinds, gaps, failures, process groups, ancestry, and lifetimes across recordings.
 .TP
 .B compare
-Compare process groups, ancestry, failures, counts, and lifetimes in two SQLite recordings.
+Compare process groups, ancestry, failures, counts, and lifetimes in two JSONL recordings.
 .TP
 .B version
 Print version, source commit, and build date.
@@ -86,7 +86,7 @@ for command-specific options.
 The
 .B -input
 option may be repeated up to 64 times for query, replay, and report. Events are merged by time, sequence, and input order. Without this option, those commands read
-.IR bottom.sqlite .
+.IR bottom.jsonl .
 .PP
 The
 .B -backend
@@ -98,20 +98,14 @@ and
 .B poll
 selects native process-table polling directly. Auto records a capture gap and falls back to polling when a platform event source is unavailable.
 .PP
-The
-.B -otel-endpoint
-option defaults to empty, which disables OpenTelemetry and makes no export requests. Set it to a local OTLP/HTTP logs URL such as
-.IR http://127.0.0.1:4318/v1/logs .
-The host must be localhost or a loopback address, the port is required, and the path must be
-.IR /v1/logs .
 .SH RECORDING FORMATS
-Text output is intended for terminals. JSONL and CSV contain versioned session, event, and gap records. SQLite schema version 4 supports indexed queries, replay, reports, and comparisons.
+Text output is intended for terminals. JSONL and CSV contain versioned session, event, and gap records. JSONL is the canonical format for queries, replay, reports, and comparisons.
 .SH FILES
 .TP
-.I bottom.sqlite
-Default SQLite recording path.
+.I bottom.jsonl
+Default JSONL recording path for query, replay, and report.
 .TP
-.I bottom-trace.sqlite
+.I bottom-trace.jsonl
 Default trace recording path.
 .TP
 .I ~/.config/fish/completions/bottom.fish
@@ -129,5 +123,4 @@ and
 .I packaging/macos/bottom.entitlements
 with the signing procedure. Auto mode falls back to polling when those requirements are absent.
 .SH SEE ALSO
-.BR ps (1),
-.BR sqlite3 (1)
+.BR ps (1)

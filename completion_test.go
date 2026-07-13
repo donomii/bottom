@@ -19,9 +19,6 @@ func TestFishCompletionIncludesCommandsAndOptions(t *testing.T) {
 	if !strings.Contains(output.String(), "windows-etw, or macos-endpoint-security") {
 		t.Fatalf("expected fish backend completion to list native platform choices, received %q", output.String())
 	}
-	if !strings.Contains(output.String(), "__fish_seen_subcommand_from record watch trace' -l otel-endpoint") {
-		t.Fatalf("expected fish completion to offer OpenTelemetry export for trace, received %q", output.String())
-	}
 }
 
 func TestCompletionHelpAndArguments(t *testing.T) {

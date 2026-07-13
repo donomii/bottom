@@ -10,7 +10,6 @@ import (
 
 const (
 	defaultRecorderBufferSize = 1024
-	defaultSQLiteBatchSize    = 128
 	defaultRecorderFlush      = 250 * time.Millisecond
 )
 
@@ -20,13 +19,11 @@ var (
 )
 
 type recorderOptions struct {
-	bufferSize      int
-	sqliteBatchSize int
-	flushInterval   time.Duration
-	retention       time.Duration
-	rotation        rotationOptions
-	redact          []string
-	tuiStop         func()
+	bufferSize    int
+	flushInterval time.Duration
+	rotation      rotationOptions
+	redact        []string
+	tuiStop       func()
 }
 
 type rotationOptions struct {
@@ -36,9 +33,8 @@ type rotationOptions struct {
 
 func defaultRecorderOptions() recorderOptions {
 	return recorderOptions{
-		bufferSize:      defaultRecorderBufferSize,
-		sqliteBatchSize: defaultSQLiteBatchSize,
-		flushInterval:   defaultRecorderFlush,
+		bufferSize:    defaultRecorderBufferSize,
+		flushInterval: defaultRecorderFlush,
 	}
 }
 
@@ -47,13 +43,6 @@ func recorderOptionsFromConfig(config Config) recorderOptions {
 	if config.RecorderBuffer != 0 {
 		options.bufferSize = config.RecorderBuffer
 	}
-	if config.SQLiteBatch != 0 {
-		options.sqliteBatchSize = config.SQLiteBatch
-	}
-	if config.SQLiteFlush != 0 {
-		options.flushInterval = config.SQLiteFlush
-	}
-	options.retention = config.Retention
 	options.rotation = rotationOptions{maxBytes: config.RotateSize, interval: config.RotateInterval}
 	options.redact = append([]string(nil), config.Redact...)
 	return options
@@ -63,9 +52,6 @@ func normalizeRecorderOptions(options recorderOptions) recorderOptions {
 	defaults := defaultRecorderOptions()
 	if options.bufferSize == 0 {
 		options.bufferSize = defaults.bufferSize
-	}
-	if options.sqliteBatchSize == 0 {
-		options.sqliteBatchSize = defaults.sqliteBatchSize
 	}
 	if options.flushInterval == 0 {
 		options.flushInterval = defaults.flushInterval
@@ -77,14 +63,8 @@ func validateRecorderOptions(options recorderOptions) error {
 	if options.bufferSize < -1 {
 		return fmt.Errorf("recorder buffer must be positive or -1 to disable buffering, received %d", options.bufferSize)
 	}
-	if options.sqliteBatchSize <= 0 {
-		return fmt.Errorf("sqlite batch size must be positive, received %d", options.sqliteBatchSize)
-	}
 	if options.flushInterval <= 0 {
 		return fmt.Errorf("recorder flush interval must be positive, received %s", options.flushInterval)
-	}
-	if options.retention < 0 {
-		return fmt.Errorf("recording retention must not be negative, received %s", options.retention)
 	}
 	if options.rotation.maxBytes < 0 {
 		return fmt.Errorf("recording rotation size must not be negative, received %d", options.rotation.maxBytes)

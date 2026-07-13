@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Removed SQLite recording and OpenTelemetry export; JSONL is now the canonical format for query, replay, report, comparison, and trace workflows. Existing SQLite recordings require version 0.1.2 for conversion before upgrading.
 - Added immediate TUI navigation, editable search, adaptive sizing, column layouts, and sortable views with a line-oriented fallback.
 - Added natural-exit lifecycle smoke checks for polling on every platform and native Linux and Windows event sources.
 - Corrected Windows ETW private system logger creation to use its own session GUID rather than the reserved kernel logger GUID.

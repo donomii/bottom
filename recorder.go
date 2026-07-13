@@ -75,21 +75,6 @@ func newRecorderWithOptions(config Config, options recorderOptions) (Recorder, e
 		}
 		targets = append(targets, outputTarget)
 	}
-	if config.OTelEndpoint != "" {
-		otelTarget, err := newOTelRecorder(config.OTelEndpoint, session, options)
-		if err != nil {
-			return nil, joinRecorderErrors(err, closeRecorderTargets(targets))
-		}
-		preparedOTelTarget := prepareSink(otelTarget)
-		if config.RingBuffer > 0 {
-			trigger, err := newEventTrigger(config.Trigger)
-			if err != nil {
-				return nil, joinRecorderErrors(err, preparedOTelTarget.Close(), closeRecorderTargets(targets))
-			}
-			preparedOTelTarget = newTriggeredRecorder(preparedOTelTarget, config.RingBuffer, config.PostTrigger, trigger)
-		}
-		targets = append(targets, preparedOTelTarget)
-	}
 	if len(targets) == 1 {
 		return targets[0], nil
 	}
@@ -109,9 +94,6 @@ func newOutputRecorder(format OutputFormat, path string, session recordingSessio
 		return newOutputRecorderSegment(format, segmentPath, session, options)
 	}
 	if path != "" && options.rotation.enabled() {
-		if format == FormatSQLite {
-			return nil, fmt.Errorf("output rotation supports text, jsonl, and csv, received format %q", format)
-		}
 		return newRotatingRecorder(path, options.rotation, factory)
 	}
 	return factory(path)
@@ -132,10 +114,8 @@ func newOutputRecorderSegment(format OutputFormat, path string, session recordin
 		return newJSONLRecorder(path, session)
 	case FormatCSV:
 		return newCSVRecorderWithSession(path, session)
-	case FormatSQLite:
-		return newSQLiteRecorderWithOptions(path, session, options)
 	default:
-		return nil, fmt.Errorf("format must be text, jsonl, csv, or sqlite, received %q", format)
+		return nil, fmt.Errorf("format must be text, jsonl, or csv, received %q", format)
 	}
 }
 

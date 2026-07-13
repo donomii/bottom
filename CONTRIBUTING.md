@@ -20,7 +20,7 @@ Before submitting a platform change, run the native test suite on that platform.
 - Add or update tests for new behavior.
 - Keep process snapshot errors actionable: include the attempted task, expected result, received result, and useful values.
 - Preserve structured gap reporting whenever capture completeness can change.
-- Keep new recording fields versioned and migrate existing SQLite databases without rewriting invalid data.
+- Keep new recording fields versioned and reject invalid JSONL records without rewriting them.
 - Do not make tests depend on internet access.
 
 ## Source Map
@@ -28,7 +28,7 @@ Before submitting a platform change, run the native test suite on that platform.
 - `backend_poll.go` and `lifecycle_helpers.go`: snapshot lifecycle and stable identity.
 - `platform_events_linux.go`, `platform_events_windows_etw.go`, and `platform_events_darwin_endpoint.go`: native lifecycle events and reconciliation.
 - `snapshot_*.go`: native platform snapshots.
-- `recorder*.go`: output pipelines, session metadata, SQLite, rotation, retention, redaction, and triggers.
+- `recorder*.go`: output pipelines, session metadata, rotation, redaction, and triggers.
 - `recording_*.go`: query, report, replay, and comparison.
 - `trace.go`: scoped descendant tracing and Perfetto export.
 - `churn.go`, `filters.go`, and `tui.go`: classification and interactive presentation.
@@ -39,7 +39,7 @@ Before submitting a platform change, run the native test suite on that platform.
 - Add unusual macOS process-argument fixtures and signed Endpoint Security smoke coverage.
 - Add POSIX-shell and PowerShell completion generation alongside Fish.
 - Add automatic release updates for the public Homebrew tap and Scoop bucket without broad repository credentials.
-- Add follow mode for querying an active SQLite recording.
+- Add follow mode for querying an active JSONL recording.
 - Add terminal-width and key-sequence fixtures for the interactive timeline.
 
 ## Releases

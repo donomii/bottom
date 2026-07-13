@@ -5,7 +5,7 @@
 
 `top` shows what is running. `bottom` shows what ran.
 
-Bottom is a read-only process lifecycle flight recorder for transient commands, restart loops, and process ancestry. It records start, exec, stop, churn, and capture-gap events to the terminal, JSONL, CSV, SQLite, or an interactive timeline.
+Bottom is a read-only process lifecycle flight recorder for transient commands, restart loops, and process ancestry. It records start, exec, stop, churn, and capture-gap events to the terminal, JSONL, CSV, or an interactive timeline.
 
 ![Bottom recording and reporting process history](docs/demo.gif)
 
@@ -52,30 +52,30 @@ Print process history to the terminal:
 bottom
 ```
 
-Watch interactively while recording to SQLite:
+Watch interactively while recording to JSONL:
 
 ```fish
-bottom -tui -format sqlite -output bottom.sqlite
+bottom -tui -format jsonl -output bottom.jsonl
 ```
 
 Find short-lived processes that exited with code 1 during the last 15 minutes:
 
 ```fish
-bottom query -input bottom.sqlite -events stop -since 15m -max-duration 5s -exit-code 1
+bottom query -input bottom.jsonl -events stop -since 15m -max-duration 5s -exit-code 1
 ```
 
 Trace only a command and its descendants, then create a Perfetto timeline:
 
 ```fish
-bottom trace -output build.sqlite -perfetto build-trace.json -- make test
+bottom trace -output build.jsonl -perfetto build-trace.json -- make test
 ```
 
 Summarize, replay, or compare recordings:
 
 ```fish
-bottom report -input bottom.sqlite
-bottom replay -input bottom.sqlite -tui -speed 4
-bottom compare -before previous.sqlite -after current.sqlite
+bottom report -input bottom.jsonl
+bottom replay -input bottom.jsonl -tui -speed 4
+bottom compare -before previous.jsonl -after current.jsonl
 ```
 
 ## What Bottom records
@@ -85,7 +85,7 @@ bottom compare -before previous.sqlite -after current.sqlite
 - Linux UID, TTY, session, cgroup, systemd unit, and container identity when visible.
 - Exit status when supplied by the backend.
 - Structured capture gaps and backend transitions so detected losses are explicit.
-- Versioned JSONL, CSV, and SQLite metadata for session, host, boot, sequence, schema, source timestamp, and observation timestamp.
+- Versioned JSONL and CSV metadata for session, host, boot, sequence, schema, source timestamp, and observation timestamp.
 - Semantic restart churn grouped by executable, parent, owner, service, and container rather than volatile arguments.
 
 Text output uses full timestamps and one event per line:
@@ -106,17 +106,13 @@ Capture and output:
 
 - `-backend auto` chooses the native event source for the current platform and otherwise uses native snapshot polling. Explicit values are `auto`, `poll`, `linux-proc-connector`, `windows-etw`, and `macos-endpoint-security`.
 - `-poll 100ms` sets the polling fallback interval.
-- `-format text` selects `text`, `jsonl`, `csv`, or `sqlite` output.
-- `-output PATH` appends to an owner-only output file. SQLite defaults to `bottom.sqlite`; other formats default to stdout.
+- `-format text` selects `text`, `jsonl`, or `csv` output.
+- `-output PATH` appends to an owner-only output file; empty writes to stdout.
 - `-tui` shows the interactive timeline. When `-output` is set, the same events are recorded simultaneously.
 - `-recorder-buffer 1024` bounds queued writes; a full queue stops with an accurate backpressure error rather than losing events silently.
-- `-sqlite-batch 128` sets the maximum events per SQLite transaction.
-- `-sqlite-flush 250ms` sets the maximum delay before writing a partial SQLite transaction.
-- `-retention 0` removes older SQLite rows when the recorder opens and the value is non-zero; zero retains all rows.
 - `-rotate-size 0` rotates text, JSONL, or CSV after this many bytes; zero disables size rotation.
 - `-rotate-interval 0` rotates text, JSONL, or CSV after this duration; zero disables time rotation.
 - `-redact TEXT` replaces exact matching text with `[REDACTED]` before any output; repeat it for multiple values. The default performs no rewriting.
-- `-otel-endpoint URL` exports OTLP/HTTP logs to an explicit loopback collector. Empty disables OpenTelemetry and makes no network requests.
 
 Filtering:
 
@@ -160,17 +156,17 @@ Tagged archives inject all version fields. Source-installed and checkout builds 
 
 Runs the command after the required `--`, records only that process and discovered descendants, and never acts on unrelated processes.
 
-- `-format sqlite` and `-output bottom-trace.sqlite` select the recording.
+- `-format jsonl` and `-output bottom-trace.jsonl` select the recording by default.
 - `-poll 10ms` sets descendant discovery frequency.
 - `-tail 2s` limits observation of surviving descendants after the root command exits; Bottom records a gap if the tail ends while descendants remain.
 - `-perfetto PATH` writes a new owner-only Perfetto-compatible JSON timeline. Empty disables export and its in-memory event retention. The recording and Perfetto paths must resolve to different files.
-- `-redact`, `-recorder-buffer`, `-sqlite-batch`, `-sqlite-flush`, and `-otel-endpoint` behave as in recording mode.
+- `-redact` and `-recorder-buffer` behave as in recording mode.
 
 Trace rejects `-tui` because the traced command shares the terminal. Record to a file and use `bottom replay -tui` afterward. Once the command starts, Bottom waits for its natural exit even if recording fails; it does not alter the command or surviving descendants.
 
 ### `bottom query`, `bottom replay`, and `bottom report`
 
-These commands open `-input bottom.sqlite` read-only and stream matching events without changing it. An output path that resolves to the input file is rejected.
+These commands stream `-input bottom.jsonl` without changing it. An output path that resolves to the input file is rejected.
 
 - `-since` and `-until` accept RFC3339 timestamps or durations before now such as `15m`.
 - `-exit-code CODE` matches an exact exit code, including zero.
@@ -182,7 +178,7 @@ These commands open `-input bottom.sqlite` read-only and stream matching events 
 
 ### `bottom compare`
 
-`-before before.sqlite` and `-after after.sqlite` are opened read-only and compare process fingerprints, ancestry, counts, failures, and average lifetimes. `-output` appends the report to an owner-only file; empty writes to stdout and paths resolving to either input are rejected.
+`-before before.jsonl` and `-after after.jsonl` are opened read-only and compare process fingerprints, ancestry, counts, failures, and average lifetimes. `-output` appends the report to an owner-only file; empty writes to stdout and paths resolving to either input are rejected.
 
 ## Interactive controls
 
@@ -217,7 +213,7 @@ Snapshot backends can miss a process that starts and exits entirely between snap
 
 ## Recording formats and privacy
 
-JSONL and CSV contain versioned session start/end records plus event and gap records. SQLite schema version 4 contains `schema_migrations`, `sessions`, `events`, and `gaps`, normalized query columns, raw versioned event JSON, exact nanosecond time keys, and indexes for time, process, executable, parent, service, and container queries.
+JSONL and CSV contain versioned session start/end records plus event and gap records. JSONL is the canonical format for query, replay, report, and comparison workflows.
 
 New output files use mode `0600` on Unix. Existing destination permissions are preserved. Command arguments can contain credentials; use repeated `-redact` values when exact sensitive text must not be stored. Structural fields such as event kind, backend, and session identifiers are not rewritten because doing so would break queries and coverage classification.
 
@@ -247,7 +243,7 @@ Read-only means Bottom does not terminate, suspend, inject into, or otherwise al
 - `build.sh` creates the `bottom` binary.
 - `test.sh` runs the Go tests and built-in checks.
 - `benchmark.sh` measures burst snapshot diffing and bounded high-cardinality churn handling.
-- `demo.sh` traces a finite self-test, writes SQLite and Perfetto recordings, and prints an ancestry report plus the artifact paths.
+- `demo.sh` traces a finite self-test, writes JSONL and Perfetto recordings, and prints an ancestry report plus the artifact paths.
 - `install.sh` installs the command with `go install`.
 
 GitHub Actions tests Linux, macOS, and Windows, runs natural-exit lifecycle smoke checks, the Go race detector, and a portable release/SBOM snapshot. Tags matching `v*` run the release workflow and produce `bottom-events` archives with checksums, SPDX JSON SBOMs, and GitHub provenance attestations.

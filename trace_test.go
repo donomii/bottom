@@ -20,6 +20,9 @@ func TestParseTraceConfigRequiresExactCommandBoundary(t *testing.T) {
 	if config.Recorder.Backend != BackendTrace || config.Recorder.PollInterval != 5*time.Millisecond || config.Tail != time.Second || strings.Join(config.Command, " ") != "go test ./..." {
 		t.Fatalf("expected parsed trace settings and command, received %#v", config)
 	}
+	if config.Recorder.Format != FormatJSONL || config.Recorder.OutputPath != "bottom-trace.jsonl" {
+		t.Fatalf("expected default JSONL trace recording, received %#v", config.Recorder)
+	}
 	if _, err := parseTraceConfig([]string{"go", "test"}); err == nil {
 		t.Fatalf("expected trace command without -- boundary to be rejected")
 	}
@@ -33,7 +36,7 @@ func TestParseTraceConfigRequiresExactCommandBoundary(t *testing.T) {
 	if _, err := parseTraceConfig([]string{"-tui", "--", "go", "test"}); err == nil || !strings.Contains(err.Error(), "shares the terminal") {
 		t.Fatalf("expected trace tui to be rejected before command execution, received %v", err)
 	}
-	if _, err := parseTraceConfig([]string{"-output", "trace.sqlite", "-perfetto", "./trace.sqlite", "--", "go", "test"}); err == nil || !strings.Contains(err.Error(), "different files") {
+	if _, err := parseTraceConfig([]string{"-output", "trace.jsonl", "-perfetto", "./trace.jsonl", "--", "go", "test"}); err == nil || !strings.Contains(err.Error(), "different files") {
 		t.Fatalf("expected equivalent trace outputs to be rejected, received %v", err)
 	}
 }
@@ -49,15 +52,15 @@ func TestParseTraceConfigRejectsPathsThroughEquivalentDirectories(t *testing.T) 
 		t.Skipf("create trace output directory link: %v", err)
 	}
 	_, err := parseTraceConfig([]string{
-		"-output", filepath.Join(realDirectory, "uncreated", "trace.sqlite"),
-		"-perfetto", filepath.Join(linkedDirectory, "uncreated", "trace.sqlite"),
+		"-output", filepath.Join(realDirectory, "uncreated", "trace.jsonl"),
+		"-perfetto", filepath.Join(linkedDirectory, "uncreated", "trace.jsonl"),
 		"--", "go", "test",
 	})
 	if err == nil || !strings.Contains(err.Error(), "different files") {
 		t.Fatalf("expected paths through equivalent directories to be rejected, received %v", err)
 	}
-	danglingTarget := filepath.Join(directory, "future.sqlite")
-	danglingLink := filepath.Join(directory, "future-link.sqlite")
+	danglingTarget := filepath.Join(directory, "future.jsonl")
+	danglingLink := filepath.Join(directory, "future-link.jsonl")
 	if err := os.Symlink(danglingTarget, danglingLink); err != nil {
 		t.Skipf("create dangling trace output link: %v", err)
 	}

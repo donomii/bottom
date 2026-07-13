@@ -72,7 +72,7 @@ func parseRecordingReadConfig(command string, args []string, now time.Time) (Rec
 	format := string(config.Format)
 	flagset := flag.NewFlagSet("bottom "+command, flag.ContinueOnError)
 	inputDescription := fmt.Sprintf(
-		"SQLite recording to read; may be repeated up to %d times and defaults to bottom.sqlite",
+		"JSONL recording to read; may be repeated up to %d times and defaults to bottom.jsonl",
 		maxRecordingInputPaths,
 	)
 	flagset.Var(&inputPaths, "input", inputDescription)
@@ -102,7 +102,7 @@ func parseRecordingReadConfig(command string, args []string, now time.Time) (Rec
 		return RecordingReadConfig{}, fmt.Errorf("bottom %s format must be text, jsonl, or csv, received %q", command, config.Format)
 	}
 	if len(inputPaths) == 0 {
-		inputPaths = recordingPathListFlag{"bottom.sqlite"}
+		inputPaths = recordingPathListFlag{"bottom.jsonl"}
 	}
 	if len(inputPaths) > maxRecordingInputPaths {
 		return RecordingReadConfig{}, fmt.Errorf("bottom %s accepts at most %d input recordings, received %d", command, maxRecordingInputPaths, len(inputPaths))
@@ -239,7 +239,7 @@ func newQueryOutputRecorder(config RecordingReadConfig) (Recorder, error) {
 
 func filteredRecordingEvents(config RecordingReadConfig) ([]Event, error) {
 	filtered := []Event{}
-	readErr := streamSQLiteRecordings("read process recordings", config.InputPaths, config.Filter, config.Limit, func(event Event) error {
+	readErr := streamJSONRecordings("read process recordings", config.InputPaths, config.Filter, config.Limit, func(event Event) error {
 		filtered = append(filtered, event)
 		return nil
 	})

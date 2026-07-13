@@ -67,14 +67,6 @@ func selfTestRecorders(event Event) error {
 	if !strings.Contains(csvBuffer.String(), "compiler") {
 		return fmt.Errorf("self-test csv recorder: expected command in output, received %q", csvBuffer.String())
 	}
-	sqlRecorder, err := newSQLiteRecorder(":memory:")
-	if err != nil {
-		return err
-	}
-	defer sqlRecorder.Close()
-	if err := sqlRecorder.Write(event); err != nil {
-		return err
-	}
 	return nil
 }
 

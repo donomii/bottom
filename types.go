@@ -28,10 +28,9 @@ const (
 const EventSchemaVersion = 1
 
 const (
-	FormatText   OutputFormat = "text"
-	FormatJSONL  OutputFormat = "jsonl"
-	FormatCSV    OutputFormat = "csv"
-	FormatSQLite OutputFormat = "sqlite"
+	FormatText  OutputFormat = "text"
+	FormatJSONL OutputFormat = "jsonl"
+	FormatCSV   OutputFormat = "csv"
 )
 
 type EventKind string
@@ -49,13 +48,9 @@ type Config struct {
 	ChurnMaxKeys   int
 	ChurnMaxLife   time.Duration
 	RecorderBuffer int
-	SQLiteBatch    int
-	SQLiteFlush    time.Duration
-	Retention      time.Duration
 	RotateSize     int64
 	RotateInterval time.Duration
 	Redact         []string
-	OTelEndpoint   string
 	RingBuffer     int
 	Trigger        string
 	PostTrigger    time.Duration
@@ -180,7 +175,7 @@ func validEventMode(mode string) bool {
 
 func validOutputFormat(format OutputFormat) bool {
 	switch format {
-	case FormatText, FormatJSONL, FormatCSV, FormatSQLite:
+	case FormatText, FormatJSONL, FormatCSV:
 		return true
 	default:
 		return false

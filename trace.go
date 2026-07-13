@@ -48,12 +48,10 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 	config := TraceConfig{
 		Recorder: Config{
 			Backend:        BackendTrace,
-			Format:         FormatSQLite,
+			Format:         FormatJSONL,
 			OutputPath:     "",
 			PollInterval:   10 * time.Millisecond,
 			RecorderBuffer: 1024,
-			SQLiteBatch:    128,
-			SQLiteFlush:    250 * time.Millisecond,
 			Filter:         Filter{EventMode: EventModeAll},
 		},
 		Tail: 2 * time.Second,
@@ -66,17 +64,14 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 	var redact listFlag
 	format := string(config.Recorder.Format)
 	flagset := flag.NewFlagSet("bottom trace", flag.ContinueOnError)
-	flagset.StringVar(&format, "format", format, "recording format: text, jsonl, csv, or sqlite")
+	flagset.StringVar(&format, "format", format, "recording format: text, jsonl, or csv")
 	flagset.StringVar(&config.Recorder.OutputPath, "output", config.Recorder.OutputPath, "recording path; empty selects bottom-trace with the format extension")
 	flagset.DurationVar(&config.Recorder.PollInterval, "poll", config.Recorder.PollInterval, "descendant snapshot interval")
 	flagset.DurationVar(&config.Tail, "tail", config.Tail, "maximum time to observe surviving descendants after the command exits")
 	flagset.StringVar(&config.PerfettoPath, "perfetto", "", "write a Perfetto-compatible JSON timeline to this new file; empty disables export")
 	flagset.BoolVar(&config.Recorder.TUI, "tui", false, "unsupported for trace because the command shares the terminal; replay the recording with tui")
 	flagset.IntVar(&config.Recorder.RecorderBuffer, "recorder-buffer", config.Recorder.RecorderBuffer, "number of trace events buffered before recording applies backpressure")
-	flagset.IntVar(&config.Recorder.SQLiteBatch, "sqlite-batch", config.Recorder.SQLiteBatch, "maximum SQLite trace events written in one transaction")
-	flagset.DurationVar(&config.Recorder.SQLiteFlush, "sqlite-flush", config.Recorder.SQLiteFlush, "maximum delay before a partial SQLite trace transaction is written")
 	flagset.Var(&redact, "redact", "replace this exact text with [REDACTED] in recorded fields; may be repeated and defaults to no redaction")
-	flagset.StringVar(&config.Recorder.OTelEndpoint, "otel-endpoint", "", "local OTLP/HTTP logs endpoint, such as http://127.0.0.1:4318/v1/logs; empty disables OpenTelemetry and makes no requests")
 	if err := flagset.Parse(optionArgs); err != nil {
 		return TraceConfig{}, err
 	}
@@ -92,7 +87,7 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 		return TraceConfig{}, fmt.Errorf("bottom trace expected a command after --")
 	}
 	if !validOutputFormat(config.Recorder.Format) {
-		return TraceConfig{}, fmt.Errorf("bottom trace format must be text, jsonl, csv, or sqlite, received %q", config.Recorder.Format)
+		return TraceConfig{}, fmt.Errorf("bottom trace format must be text, jsonl, or csv, received %q", config.Recorder.Format)
 	}
 	if config.Recorder.OutputPath == "" {
 		switch config.Recorder.Format {
@@ -102,8 +97,6 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 			config.Recorder.OutputPath = "bottom-trace.jsonl"
 		case FormatCSV:
 			config.Recorder.OutputPath = "bottom-trace.csv"
-		case FormatSQLite:
-			config.Recorder.OutputPath = "bottom-trace.sqlite"
 		}
 	}
 	if err := validateTraceOutputConfiguration(config); err != nil {
@@ -115,11 +108,8 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 	if config.Tail < 0 {
 		return TraceConfig{}, fmt.Errorf("bottom trace tail must not be negative, received %s", config.Tail)
 	}
-	if config.Recorder.RecorderBuffer <= 0 || config.Recorder.SQLiteBatch <= 0 || config.Recorder.SQLiteFlush <= 0 {
-		return TraceConfig{}, fmt.Errorf("bottom trace recorder settings must be positive, received buffer=%d batch=%d flush=%s", config.Recorder.RecorderBuffer, config.Recorder.SQLiteBatch, config.Recorder.SQLiteFlush)
-	}
-	if _, err := normalizeOTelEndpoint(config.Recorder.OTelEndpoint); err != nil {
-		return TraceConfig{}, fmt.Errorf("bottom trace: %w", err)
+	if config.Recorder.RecorderBuffer <= 0 {
+		return TraceConfig{}, fmt.Errorf("bottom trace recorder buffer must be positive, received %d", config.Recorder.RecorderBuffer)
 	}
 	return config, nil
 }

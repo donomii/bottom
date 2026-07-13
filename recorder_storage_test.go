@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -12,8 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestRecordingOutputsAreCreatedOwnerOnly(t *testing.T) {
@@ -28,15 +25,6 @@ func TestRecordingOutputsAreCreatedOwnerOnly(t *testing.T) {
 	}
 	assertOwnerOnlyFile(t, textPath)
 
-	sqlitePath := filepath.Join(directory, "events.sqlite")
-	recorder, err := newSQLiteRecorder(sqlitePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := recorder.Close(); err != nil {
-		t.Fatal(err)
-	}
-	assertOwnerOnlyFile(t, sqlitePath)
 }
 
 func TestJSONLAndCSVStoreSessionAndGapRecords(t *testing.T) {
@@ -140,214 +128,6 @@ func TestCSVRejectsAnIncompatibleExistingHeader(t *testing.T) {
 	}
 }
 
-func TestSQLiteMigratesLegacySchemaAndStoresIndexedSessions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.sqlite")
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`CREATE TABLE events (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		time TEXT NOT NULL,
-		kind TEXT NOT NULL,
-		pid INTEGER,
-		parent_pid INTEGER,
-		user TEXT,
-		command TEXT,
-		exe TEXT,
-		cwd TEXT,
-		duration_ms INTEGER,
-		exit_code INTEGER,
-		backend TEXT NOT NULL,
-		count INTEGER,
-		window_ms INTEGER,
-		message TEXT,
-		parent_chain TEXT
-	)`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacyTimeText := "2026-07-09T05:00:00.100001-07:00"
-	if _, err := db.Exec(`INSERT INTO events (time, kind, pid, backend) VALUES (?, ?, ?, ?)`, legacyTimeText, EventStart, 7, BackendPoll); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	session := testRecordingSession(t)
-	recorder, err := newSQLiteRecorderWithOptions(path, session, recorderOptions{bufferSize: -1, sqliteBatchSize: 2, flushInterval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	event := Event{
-		SchemaVersion: EventSchemaVersion,
-		SessionID:     "capture-session",
-		Sequence:      11,
-		Kind:          EventStart,
-		Time:          time.Now().UTC(),
-		ObservedAt:    time.Now().UTC(),
-		ProcessID:     "42:100",
-		PID:           42,
-		Command:       "worker --serve",
-		Exe:           "/usr/bin/worker",
-		SystemdUnit:   "worker.service",
-		ContainerID:   "container-1",
-		Backend:       BackendPoll,
-	}
-	gap := Event{
-		SchemaVersion: EventSchemaVersion,
-		SessionID:     event.SessionID,
-		Sequence:      12,
-		Kind:          EventGap,
-		Time:          time.Now().UTC(),
-		ObservedAt:    time.Now().UTC(),
-		Backend:       BackendPoll,
-		Count:         3,
-		Message:       "expected sequence 9, received 12",
-	}
-	if err := recorder.Write(event); err != nil {
-		t.Fatal(err)
-	}
-	if recorder.pending != 1 {
-		t.Fatalf("expected one pending SQLite row before batch commit, received %d", recorder.pending)
-	}
-	if err := recorder.Write(gap); err != nil {
-		t.Fatal(err)
-	}
-	if recorder.pending != 0 {
-		t.Fatalf("expected batch to commit at two rows, received %d pending rows", recorder.pending)
-	}
-	if err := recorder.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	db, err = sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	var version int
-	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
-		t.Fatal(err)
-	}
-	if version != recordingSchemaVersion {
-		t.Fatalf("expected recording schema version %d, received %d", recordingSchemaVersion, version)
-	}
-	var migratedTimeKey string
-	if err := db.QueryRow(`SELECT time_key FROM events WHERE pid = 7`).Scan(&migratedTimeKey); err != nil {
-		t.Fatal(err)
-	}
-	legacyTime, err := time.Parse(time.RFC3339Nano, legacyTimeText)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if migratedTimeKey != formatRecordingTimeKey(legacyTime) {
-		t.Fatalf("expected migrated UTC nanosecond time key %q, received %q", formatRecordingTimeKey(legacyTime), migratedTimeKey)
-	}
-	var storedSessionID string
-	var processID string
-	var eventJSON string
-	if err := db.QueryRow(`SELECT session_id, process_id, event_json FROM events WHERE pid = 42`).Scan(&storedSessionID, &processID, &eventJSON); err != nil {
-		t.Fatal(err)
-	}
-	if storedSessionID != event.SessionID || processID != event.ProcessID || !strings.Contains(eventJSON, `"systemd_unit":"worker.service"`) {
-		t.Fatalf("unexpected stored event session=%q process=%q json=%s", storedSessionID, processID, eventJSON)
-	}
-	var gapMessage string
-	var gapCount int
-	if err := db.QueryRow(`SELECT message, count FROM gaps WHERE sequence = 12`).Scan(&gapMessage, &gapCount); err != nil {
-		t.Fatal(err)
-	}
-	if gapMessage != gap.Message || gapCount != gap.Count {
-		t.Fatalf("unexpected stored gap message=%q count=%d", gapMessage, gapCount)
-	}
-	var endedAt string
-	if err := db.QueryRow(`SELECT ended_at FROM sessions WHERE id = ?`, session.ID).Scan(&endedAt); err != nil {
-		t.Fatal(err)
-	}
-	if endedAt == "" {
-		t.Fatal("expected SQLite session end timestamp")
-	}
-	var indexCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (
-		'events_session_sequence', 'events_process_time', 'events_exe_time', 'events_unit_time', 'events_container_time',
-		'events_legacy_time', 'gaps_legacy_time'
-	)`).Scan(&indexCount); err != nil {
-		t.Fatal(err)
-	}
-	if indexCount != 7 {
-		t.Fatalf("expected seven query indexes, received %d", indexCount)
-	}
-	for _, name := range []string{
-		"events_recording_session_time", "events_time", "events_kind_time", "events_pid_time", "events_process_time",
-		"events_parent_time", "events_exe_time", "events_command_time", "events_exit_time", "events_unit_time",
-		"events_container_time", "gaps_recording_session_time", "gaps_time",
-	} {
-		var definition string
-		if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&definition); err != nil {
-			t.Fatalf("read migrated index %q: %v", name, err)
-		}
-		if !strings.Contains(definition, "time_key") || !strings.Contains(definition, "sequence") {
-			t.Fatalf("expected migrated index %q to order by normalized time and sequence, received %q", name, definition)
-		}
-	}
-}
-
-func TestSQLiteRetentionRemovesExpiredSessions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "retention.sqlite")
-	oldSession := testRecordingSession(t)
-	recorder, err := newSQLiteRecorderWithOptions(path, oldSession, recorderOptions{bufferSize: -1, sqliteBatchSize: 1, flushInterval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldEventTime := time.Now().UTC().Add(-48 * time.Hour)
-	if err := recorder.Write(Event{Kind: EventStart, Time: oldEventTime, PID: 8, Command: "old", Backend: BackendPoll}); err != nil {
-		t.Fatal(err)
-	}
-	if err := recorder.Close(); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldStartedAt := oldEventTime.Format(time.RFC3339Nano)
-	if _, err := db.Exec(`UPDATE sessions SET started_at = ?, ended_at = ? WHERE id = ?`, oldStartedAt, oldStartedAt, oldSession.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	newSession := testRecordingSession(t)
-	recorder, err = newSQLiteRecorderWithOptions(path, newSession, recorderOptions{
-		bufferSize: -1, sqliteBatchSize: 1, flushInterval: time.Second, retention: 24 * time.Hour,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := recorder.Close(); err != nil {
-		t.Fatal(err)
-	}
-	db, err = sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	var oldSessions int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = ?`, oldSession.ID).Scan(&oldSessions); err != nil {
-		t.Fatal(err)
-	}
-	var oldEvents int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM events WHERE recording_session_id = ?`, oldSession.ID).Scan(&oldEvents); err != nil {
-		t.Fatal(err)
-	}
-	if oldSessions != 0 || oldEvents != 0 {
-		t.Fatalf("expected expired session and events to be removed, received sessions=%d events=%d", oldSessions, oldEvents)
-	}
-}
-
 func TestBufferedRecorderReportsBackpressureAndSinkFailure(t *testing.T) {
 	gate := &gatedRecorder{entered: make(chan struct{}), release: make(chan struct{})}
 	recorder := newBufferedRecorder(gate, 1, time.Hour)
@@ -385,37 +165,6 @@ func TestBufferedRecorderReportsBackpressureAndSinkFailure(t *testing.T) {
 	}
 	if err := recorder.Close(); !errors.Is(err, failure) {
 		t.Fatalf("expected close to return recording sink failure, received %v", err)
-	}
-}
-
-func TestBufferedSQLiteFlushesPartialBatchOnInterval(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "flush.sqlite")
-	session := testRecordingSession(t)
-	sqliteTarget, err := newSQLiteRecorderWithOptions(path, session, recorderOptions{
-		bufferSize: -1, sqliteBatchSize: 100, flushInterval: 10 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorder := newBufferedRecorder(sqliteTarget, 4, 10*time.Millisecond)
-	if err := recorder.Write(Event{Kind: EventStart, Time: time.Now().UTC(), PID: 31, Backend: BackendPoll}); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		sqliteTarget.mutex.Lock()
-		pending := sqliteTarget.pending
-		sqliteTarget.mutex.Unlock()
-		if pending == 0 && sqliteEventCount(t, path) == 1 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("partial SQLite batch was not committed within the configured flush interval")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if err := recorder.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -616,18 +365,4 @@ func csvColumns(header []string) map[string]int {
 		columns[name] = index
 	}
 	return columns
-}
-
-func sqliteEventCount(t *testing.T, path string) int {
-	t.Helper()
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	return count
 }

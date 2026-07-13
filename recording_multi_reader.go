@@ -4,8 +4,8 @@ import "fmt"
 
 type recordingFileCursor struct {
 	index  int
-	reader *sqliteRecordingReader
-	events *sqliteRecordingEventCursor
+	reader *jsonRecordingReader
+	events *jsonRecordingEventCursor
 }
 
 type recordingFileEventStream struct {
@@ -13,7 +13,7 @@ type recordingFileEventStream struct {
 	limit   int
 }
 
-func streamSQLiteRecordings(operation string, paths []string, filter Filter, limit int, visit func(Event) error) error {
+func streamJSONRecordings(operation string, paths []string, filter Filter, limit int, visit func(Event) error) error {
 	stream, err := openRecordingFileEventStream(operation, paths, filter, limit)
 	if err != nil {
 		return err
@@ -43,10 +43,7 @@ func (stream *recordingFileEventStream) Stream(visit func(Event) error) error {
 			break
 		}
 		current := selected.events.current()
-		if current.validationErr != nil {
-			return joinRecorderErrors(current.validationErr, stream.Close())
-		}
-		if err := visit(current.event); err != nil {
+		if err := visit(*current); err != nil {
 			return joinRecorderErrors(err, stream.Close())
 		}
 		matched++
@@ -110,7 +107,7 @@ func rejectRecordingOutputAliases(operation string, outputPath string, inputPath
 func openRecordingFileCursors(paths []string, filter Filter, limit int) ([]*recordingFileCursor, error) {
 	sources := []*recordingFileCursor{}
 	for index, path := range paths {
-		reader, err := openSQLiteRecordingReader(path)
+		reader, err := openJSONRecordingReader(path)
 		if err != nil {
 			return nil, joinRecorderErrors(err, closeRecordingFileCursors(sources))
 		}
@@ -154,16 +151,13 @@ func nextRecordingFileCursor(sources []*recordingFileCursor) *recordingFileCurso
 }
 
 func recordingFileCursorLess(left *recordingFileCursor, right *recordingFileCursor) bool {
-	leftEvent := left.events.current()
-	rightEvent := right.events.current()
-	if !leftEvent.headTime.Equal(rightEvent.headTime) {
-		return leftEvent.headTime.Before(rightEvent.headTime)
+	leftEvent := *left.events.current()
+	rightEvent := *right.events.current()
+	if recordingEventLess(leftEvent, rightEvent) {
+		return true
 	}
-	if leftEvent.headSequence != rightEvent.headSequence {
-		return leftEvent.headSequence < rightEvent.headSequence
+	if recordingEventLess(rightEvent, leftEvent) {
+		return false
 	}
-	if left.index != right.index {
-		return left.index < right.index
-	}
-	return leftEvent.source.rank < rightEvent.source.rank
+	return left.index < right.index
 }

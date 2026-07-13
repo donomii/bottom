@@ -46,9 +46,6 @@ func parseConfig(args []string) (Config, error) {
 		ChurnMaxKeys:   4096,
 		ChurnMaxLife:   5 * time.Second,
 		RecorderBuffer: 1024,
-		SQLiteBatch:    128,
-		SQLiteFlush:    250 * time.Millisecond,
-		OTelEndpoint:   "",
 		Trigger:        "churn",
 		PostTrigger:    10 * time.Second,
 		Filter: Filter{
@@ -78,8 +75,8 @@ func parseConfig(args []string) (Config, error) {
 	flagset.DurationVar(&config.Filter.MinDuration, "min-duration", 0, "show stop events only when the process lived at least this long")
 	flagset.DurationVar(&config.Filter.MaxDuration, "max-duration", 0, "show stop events only when the process lived no longer than this")
 	flagset.DurationVar(&config.PollInterval, "poll", config.PollInterval, "polling interval used by the polling backend and fallback mode")
-	flagset.StringVar(&format, "format", format, "output format: text, jsonl, csv, or sqlite")
-	flagset.StringVar(&config.OutputPath, "output", config.OutputPath, "output file path for text, csv, jsonl, or sqlite; empty writes text, csv, and jsonl to stdout")
+	flagset.StringVar(&format, "format", format, "output format: text, jsonl, or csv")
+	flagset.StringVar(&config.OutputPath, "output", config.OutputPath, "output file path for text, csv, or jsonl; empty writes to stdout")
 	flagset.BoolVar(&config.TUI, "tui", false, "show an interactive terminal timeline; when output is set, record there at the same time")
 	flagset.DurationVar(&config.ChurnWindow, "churn-window", config.ChurnWindow, "time window used to group repeated short-lived command starts")
 	flagset.IntVar(&config.ChurnThreshold, "churn-threshold", config.ChurnThreshold, "number of starts inside the churn window before bottom reports a churn event")
@@ -87,13 +84,9 @@ func parseConfig(args []string) (Config, error) {
 	flagset.IntVar(&config.ChurnMaxKeys, "churn-max-keys", config.ChurnMaxKeys, "maximum process groups retained by churn detection before the oldest group is evicted")
 	flagset.DurationVar(&config.ChurnMaxLife, "churn-max-life", config.ChurnMaxLife, "maximum lifetime treated as a restart-loop process; zero counts every repeated start")
 	flagset.IntVar(&config.RecorderBuffer, "recorder-buffer", config.RecorderBuffer, "number of events buffered before recording applies backpressure")
-	flagset.IntVar(&config.SQLiteBatch, "sqlite-batch", config.SQLiteBatch, "maximum SQLite events written in one transaction")
-	flagset.DurationVar(&config.SQLiteFlush, "sqlite-flush", config.SQLiteFlush, "maximum delay before a partial SQLite transaction is written")
-	flagset.DurationVar(&config.Retention, "retention", 0, "delete SQLite events older than this duration; zero keeps all events")
 	flagset.Int64Var(&config.RotateSize, "rotate-size", 0, "rotate text, JSONL, or CSV output after this many bytes; zero disables size rotation")
 	flagset.DurationVar(&config.RotateInterval, "rotate-interval", 0, "rotate text, JSONL, or CSV output after this duration; zero disables time rotation")
 	flagset.Var(&redact, "redact", "replace this exact text with [REDACTED] in recorded fields; may be repeated and defaults to no redaction")
-	flagset.StringVar(&config.OTelEndpoint, "otel-endpoint", config.OTelEndpoint, "local OTLP/HTTP logs endpoint, such as http://127.0.0.1:4318/v1/logs; empty disables OpenTelemetry and makes no requests")
 	flagset.IntVar(&config.RingBuffer, "ring-buffer", 0, "retain this many pre-trigger events and write them only when the trigger fires; zero disables triggered recording")
 	flagset.StringVar(&config.Trigger, "trigger", config.Trigger, "ring-buffer trigger: churn, gap, failed-exit, or regex:EXPRESSION")
 	flagset.DurationVar(&config.PostTrigger, "post-trigger", config.PostTrigger, "recording time retained after a ring-buffer trigger fires")
@@ -140,15 +133,6 @@ func parseConfig(args []string) (Config, error) {
 	if config.RecorderBuffer <= 0 {
 		return Config{}, fmt.Errorf("recorder buffer must be positive, received %d", config.RecorderBuffer)
 	}
-	if config.SQLiteBatch <= 0 {
-		return Config{}, fmt.Errorf("sqlite batch must be positive, received %d", config.SQLiteBatch)
-	}
-	if config.SQLiteFlush <= 0 {
-		return Config{}, fmt.Errorf("sqlite flush interval must be positive, received %s", config.SQLiteFlush)
-	}
-	if config.Retention < 0 {
-		return Config{}, fmt.Errorf("retention must not be negative, received %s", config.Retention)
-	}
 	if config.RotateSize < 0 {
 		return Config{}, fmt.Errorf("rotate size must not be negative, received %d", config.RotateSize)
 	}
@@ -182,16 +166,7 @@ func parseConfig(args []string) (Config, error) {
 		return Config{}, fmt.Errorf("events must be start, exec, stop, churn, restart, gap, all, or both, received %q", config.Filter.EventMode)
 	}
 	if !validOutputFormat(config.Format) {
-		return Config{}, fmt.Errorf("format must be text, jsonl, csv, or sqlite, received %q", config.Format)
-	}
-	if config.Format == FormatSQLite && (config.RotateSize > 0 || config.RotateInterval > 0) {
-		return Config{}, fmt.Errorf("output rotation supports text, jsonl, and csv, received format %q", config.Format)
-	}
-	if config.Retention > 0 && config.Format != FormatSQLite {
-		return Config{}, fmt.Errorf("retention requires sqlite output, received format %q", config.Format)
-	}
-	if config.Format == FormatSQLite && config.OutputPath == "" {
-		config.OutputPath = "bottom.sqlite"
+		return Config{}, fmt.Errorf("format must be text, jsonl, or csv, received %q", config.Format)
 	}
 	if config.TUI && config.OutputPath == "" && config.Format != FormatText {
 		return Config{}, fmt.Errorf("output path is required to combine tui with %s recording", config.Format)
@@ -201,9 +176,6 @@ func parseConfig(args []string) (Config, error) {
 	}
 	if config.RingBuffer > 0 && config.OutputPath == "" {
 		return Config{}, fmt.Errorf("output path is required when triggered ring-buffer recording is enabled")
-	}
-	if _, err := normalizeOTelEndpoint(config.OTelEndpoint); err != nil {
-		return Config{}, err
 	}
 	if config.RingBuffer == 0 && (config.Trigger != "churn" || config.PostTrigger != 10*time.Second) {
 		return Config{}, fmt.Errorf("ring buffer must be positive when trigger or post-trigger differs from its default")
