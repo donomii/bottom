@@ -8,58 +8,6 @@ import (
 	"time"
 )
 
-func TestFilterAcceptsIncludeExcludeAndDuration(t *testing.T) {
-	event := Event{
-		Kind:           EventStop,
-		Time:           time.Unix(1, 0),
-		PID:            42,
-		ParentPID:      7,
-		Command:        "worker --job compile",
-		Exe:            "/usr/bin/worker",
-		Cwd:            "/tmp/project",
-		User:           "jer",
-		DurationMillis: 250,
-		Backend:        BackendPoll,
-	}
-	filter := Filter{
-		Include:     []string{"compile"},
-		Exclude:     []string{"browser"},
-		User:        "jer",
-		ParentPID:   7,
-		EventMode:   string(EventStop),
-		MinDuration: 200 * time.Millisecond,
-		MaxDuration: 300 * time.Millisecond,
-	}
-	if !filter.Accepts(event) {
-		t.Fatalf("expected filter to accept event")
-	}
-	filter.Exclude = []string{"worker"}
-	if filter.Accepts(event) {
-		t.Fatalf("expected filter to reject excluded command")
-	}
-}
-
-func TestChurnDetectorReportsThreshold(t *testing.T) {
-	now := time.Unix(1, 0)
-	detector := NewChurnDetector(time.Second, 3)
-	event := Event{Kind: EventStart, Time: now, Command: "flapper", Backend: BackendPoll}
-	if _, ok := detector.Observe(event); ok {
-		t.Fatalf("expected first start to stay below threshold")
-	}
-	event.Time = now.Add(100 * time.Millisecond)
-	if _, ok := detector.Observe(event); ok {
-		t.Fatalf("expected second start to stay below threshold")
-	}
-	event.Time = now.Add(200 * time.Millisecond)
-	churn, ok := detector.Observe(event)
-	if !ok {
-		t.Fatalf("expected third start to report churn")
-	}
-	if churn.Kind != EventChurn || churn.Count != 3 {
-		t.Fatalf("expected churn count 3, received kind=%s count=%d", churn.Kind, churn.Count)
-	}
-}
-
 func TestSnapshotDiffAddsParentChain(t *testing.T) {
 	now := time.Unix(1, 0)
 	previous := ProcessSnapshot{
@@ -80,14 +28,24 @@ func TestSnapshotDiffAddsParentChain(t *testing.T) {
 	}
 }
 
-func TestTextRecorderWritesCommand(t *testing.T) {
+func TestEventLogWritesCommand(t *testing.T) {
 	var output bytes.Buffer
 	event := Event{Kind: EventStart, Time: time.Unix(1, 0), PID: 9, Command: "sample", Backend: BackendPoll}
-	if err := (textRecorder{writer: &output}).Write(event); err != nil {
+	if err := writeEventLog(&output, event, false); err != nil {
 		t.Fatalf("write text event: %v", err)
 	}
 	if output.String() == "" {
 		t.Fatalf("expected text output")
+	}
+}
+
+func TestWatchStartLog(t *testing.T) {
+	var output bytes.Buffer
+	if err := writeWatchStarted(&output); err != nil {
+		t.Fatalf("write watch start log: %v", err)
+	}
+	if output.String() != "Starting process watch\n" {
+		t.Fatalf("expected process watch banner, received %q", output.String())
 	}
 }
 
@@ -99,8 +57,8 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	if config.PollInterval != 100*time.Millisecond {
 		t.Fatalf("expected default poll interval 100ms, received %s", config.PollInterval)
 	}
-	if config.Filter.EventMode != EventModeAll || config.RecorderBuffer != 1024 {
-		t.Fatalf("expected documented default event and recorder settings, received %#v", config)
+	if config.ShowPPID {
+		t.Fatalf("expected parent PID display to be disabled by default")
 	}
 	config, err = parseConfig([]string{"-poll", "25ms"})
 	if err != nil {
@@ -109,32 +67,23 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	if config.PollInterval != 25*time.Millisecond {
 		t.Fatalf("expected poll interval 25ms, received %s", config.PollInterval)
 	}
+	config, err = parseConfig([]string{"-ppid"})
+	if err != nil {
+		t.Fatalf("parse parent PID display config: %v", err)
+	}
+	if !config.ShowPPID {
+		t.Fatalf("expected -ppid to enable parent PID display")
+	}
 }
 
 func TestParseConfigRejectsInvalidCrossOptionCombinations(t *testing.T) {
 	cases := [][]string{
 		{"-format", "binary"},
-		{"-include-regex", "["},
 		{"unexpected"},
-		{"-min-duration", "2s", "-max-duration", "1s"},
-		{"-tui", "-format", "jsonl"},
-		{"-trigger", "gap"},
 	}
 	for _, args := range cases {
 		if _, err := parseConfig(args); err == nil {
 			t.Fatalf("expected invalid arguments %q to be rejected", args)
-		}
-	}
-}
-
-func TestParseConfigAcceptsStructuredEventModes(t *testing.T) {
-	for _, mode := range []string{"exec", "gap", "all"} {
-		config, err := parseConfig([]string{"-events", mode})
-		if err != nil {
-			t.Fatalf("parse event mode %q: %v", mode, err)
-		}
-		if config.Filter.EventMode != mode {
-			t.Fatalf("expected event mode %q, received %q", mode, config.Filter.EventMode)
 		}
 	}
 }
@@ -154,9 +103,17 @@ func TestSelectBackendRejectsPlaceholderNames(t *testing.T) {
 
 func TestStopTextIncludesCommand(t *testing.T) {
 	event := Event{Kind: EventStop, Time: time.Unix(1, 0), PID: 9, Command: "sample-worker", DurationMillis: 83, Backend: BackendPoll}
-	line := formatTextEvent(event)
-	if !strings.Contains(line, `cmd="sample-worker"`) {
-		t.Fatalf("expected stop text to include command, received %q", line)
+	line := formatEventLog(event, false)
+	if line != "Stop: 9: sample-worker" {
+		t.Fatalf("expected readable stop text, received %q", line)
+	}
+}
+
+func TestTextOutputCanIncludeParentPID(t *testing.T) {
+	event := Event{Kind: EventStart, PID: 9, ParentPID: 4, Command: "sample-worker"}
+	line := formatEventLog(event, true)
+	if line != "Start: 9 (ppid 4): sample-worker" {
+		t.Fatalf("expected readable parent PID text, received %q", line)
 	}
 }
 
@@ -189,13 +146,14 @@ func TestVersionLinePreservesInjectedReleaseIdentity(t *testing.T) {
 
 func TestTextOutputEscapesParentTerminalControls(t *testing.T) {
 	event := Event{
-		Kind:        EventStart,
-		Time:        time.Unix(1, 0),
-		Backend:     BackendPoll,
-		ParentChain: []ProcessSummary{{PID: 7, Command: "parent\x1b[2J"}},
+		Kind:    EventStart,
+		Time:    time.Unix(1, 0),
+		PID:     7,
+		Command: "worker\x1b[2J",
+		Backend: BackendPoll,
 	}
-	line := formatTextEvent(event)
-	if strings.ContainsRune(line, '\x1b') || !strings.Contains(line, `parent\x1b[2J`) {
-		t.Fatalf("expected escaped parent command in text output, received %q", line)
+	line := formatEventLog(event, false)
+	if strings.ContainsRune(line, '\x1b') || line != `Start: 7: worker\x1b[2J` {
+		t.Fatalf("expected escaped command in text output, received %q", line)
 	}
 }

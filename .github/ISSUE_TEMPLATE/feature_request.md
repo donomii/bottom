@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a backend, output, filter, package, or workflow improvement
+about: Suggest a backend, log, package, or workflow improvement
 title: ""
 labels: enhancement
 assignees: ""

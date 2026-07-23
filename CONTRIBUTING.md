@@ -9,7 +9,7 @@ Thanks for helping with bottom.
 ./benchmark.sh
 ```
 
-`./test.sh` runs `go vet ./...`, `go test ./...`, and `go run . -test`.
+`./test.sh` runs `go vet ./...` and `go test ./...`.
 
 Before submitting a platform change, run the native test suite on that platform. CI builds and tests Linux, macOS, and Windows, exercises natural-exit polling on every platform and native event delivery on Linux and Windows, runs Linux race coverage, and verifies portable release SBOM generation.
 
@@ -20,7 +20,6 @@ Before submitting a platform change, run the native test suite on that platform.
 - Add or update tests for new behavior.
 - Keep process snapshot errors actionable: include the attempted task, expected result, received result, and useful values.
 - Preserve structured gap reporting whenever capture completeness can change.
-- Keep new recording fields versioned and reject invalid JSONL records without rewriting them.
 - Do not make tests depend on internet access.
 
 ## Source Map
@@ -28,10 +27,9 @@ Before submitting a platform change, run the native test suite on that platform.
 - `backend_poll.go` and `lifecycle_helpers.go`: snapshot lifecycle and stable identity.
 - `platform_events_linux.go`, `platform_events_windows_etw.go`, and `platform_events_darwin_endpoint.go`: native lifecycle events and reconciliation.
 - `snapshot_*.go`: native platform snapshots.
-- `recorder*.go`: output pipelines, session metadata, rotation, redaction, and triggers.
-- `recording_*.go`: query, report, replay, and comparison.
-- `trace.go`: scoped descendant tracing and Perfetto export.
-- `churn.go`, `filters.go`, and `tui.go`: classification and interactive presentation.
+- `log_messages.go`: readable process log lines.
+- `trace.go`: scoped descendant watching.
+- `filters.go` and `tui.go`: interactive search and presentation.
 
 ## Contribution-Sized Work
 
@@ -39,7 +37,6 @@ Before submitting a platform change, run the native test suite on that platform.
 - Add unusual macOS process-argument fixtures and signed Endpoint Security smoke coverage.
 - Add POSIX-shell and PowerShell completion generation alongside Fish.
 - Add automatic release updates for the public Homebrew tap and Scoop bucket without broad repository credentials.
-- Add follow mode for querying an active JSONL recording.
 - Add terminal-width and key-sequence fixtures for the interactive timeline.
 
 ## Releases

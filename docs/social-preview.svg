@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title description">
-  <title id="title">Bottom process lifecycle flight recorder</title>
-  <desc id="description">A terminal timeline showing process start, exec, stop, and churn events.</desc>
+  <title id="title">Bottom process start and stop log</title>
+  <desc id="description">A terminal timeline showing process start, exec, and stop events.</desc>
   <rect width="1280" height="640" rx="36" fill="#07111f"/>
   <circle cx="70" cy="58" r="9" fill="#ff6b6b"/>
   <circle cx="101" cy="58" r="9" fill="#ffd166"/>
@@ -15,10 +15,10 @@
   <text x="754" y="164" fill="#5ee09a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="27">start  compiler</text>
   <text x="754" y="256" fill="#55c2ff" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="27">exec   linker</text>
   <text x="754" y="348" fill="#ff8e72" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="27">stop   83ms</text>
-  <text x="754" y="440" fill="#ffd166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="27">churn  5 starts</text>
+  <text x="754" y="440" fill="#ffd166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="27">stop   421 compiler</text>
   <rect x="70" y="316" width="528" height="190" rx="18" fill="#0d1d30" stroke="#203b58" stroke-width="2"/>
   <text x="102" y="370" fill="#8fa7c2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="23">top shows what is running.</text>
   <text x="102" y="418" fill="#f4f7fb" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="23">bottom shows what ran.</text>
-  <text x="102" y="466" fill="#5ee09a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="21">read-only • record • query • replay</text>
+  <text x="102" y="466" fill="#5ee09a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="21">read-only • start • exec • stop</text>
   <text x="70" y="578" fill="#57718d" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22">github.com/donomii/bottom</text>
 </svg>

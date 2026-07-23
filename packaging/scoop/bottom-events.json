@@ -1,6 +1,6 @@
 {
   "version": "0.1.2",
-  "description": "Read-only process lifecycle flight recorder",
+  "description": "Read-only process start and stop logger",
   "homepage": "https://github.com/donomii/bottom",
   "license": "GPL-3.0-only",
   "architecture": {

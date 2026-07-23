@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report incorrect process events, output, filtering, or backend behavior
+about: Report incorrect process events, log output, or backend behavior
 title: ""
 labels: bug
 assignees: ""
@@ -21,7 +21,7 @@ bottom
 - OS:
 - Bottom version or commit:
 - Backend:
-- Output format:
+- Log output:
 
 ## Relevant Output
 

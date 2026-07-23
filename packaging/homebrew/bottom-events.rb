@@ -1,5 +1,5 @@
 class BottomEvents < Formula
-  desc "Read-only process lifecycle flight recorder"
+  desc "Read-only process start and stop logger"
   homepage "https://github.com/donomii/bottom"
   version "0.1.2"
   license "GPL-3.0-only"

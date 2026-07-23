@@ -47,14 +47,3 @@ func TestReadProcessSnapshotIncludesCurrentProcessStartTime(t *testing.T) {
 		t.Fatalf("expected pid %d to include uid and session, received uid=%q session=%q", os.Getpid(), proc.UID, proc.Session)
 	}
 }
-
-func TestLinuxCgroupMetadata(t *testing.T) {
-	containerID := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	cgroup := "/system.slice/docker-" + containerID + ".scope"
-	if unit := systemdUnitFromCgroup(cgroup); unit != "docker-"+containerID+".scope" {
-		t.Fatalf("expected systemd scope, received %q", unit)
-	}
-	if received := containerIDFromCgroup(cgroup); received != containerID {
-		t.Fatalf("expected container id %q, received %q", containerID, received)
-	}
-}

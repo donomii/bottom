@@ -24,16 +24,6 @@ func BenchmarkSnapshotDiffBurst(b *testing.B) {
 	}
 }
 
-func BenchmarkChurnHighCardinality(b *testing.B) {
-	detector := newChurnDetector(10*time.Second, 5, 10*time.Second, 4096, 0)
-	base := time.Unix(1, 0)
-	b.ReportAllocs()
-	for iteration := 0; iteration < b.N; iteration++ {
-		event := Event{Kind: EventStart, Time: base.Add(time.Duration(iteration) * time.Millisecond), PID: iteration + 1, Exe: fmt.Sprintf("/bin/worker-%d", iteration%8192)}
-		detector.Observe(event)
-	}
-}
-
 func benchmarkSnapshots(processCount int) (ProcessSnapshot, ProcessSnapshot) {
 	previous := ProcessSnapshot{}
 	next := ProcessSnapshot{}

@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Removed SQLite recording and OpenTelemetry export; JSONL is now the canonical format for query, replay, report, comparison, and trace workflows. Existing SQLite recordings require version 0.1.2 for conversion before upgrading.
+- Removed the persistent recording subsystem, structured file formats, session metadata, query, replay, report, comparison, and Perfetto export. Bottom now writes its readable process log directly to standard output.
+- Removed automatic churn and service-correlation events, filtering, triggered ring capture, output rotation, redaction, asynchronous buffering, OpenTelemetry, SQLite, and container and service-unit metadata.
+- Removed the public `-test` mode; development checks run through `go test`.
+- Added `-ppid` to include each process's parent PID in readable watch and trace output.
 - Added immediate TUI navigation, editable search, adaptive sizing, column layouts, and sortable views with a line-oriented fallback.
 - Added natural-exit lifecycle smoke checks for polling on every platform and native Linux and Windows event sources.
 - Corrected Windows ETW private system logger creation to use its own session GUID rather than the reserved kernel logger GUID.

@@ -170,9 +170,6 @@ func processEventIndexed(eventTime time.Time, observedAt time.Time, backendName 
 		UID:         proc.UID,
 		TTY:         proc.TTY,
 		Session:     proc.Session,
-		Cgroup:      proc.Cgroup,
-		SystemdUnit: proc.SystemdUnit,
-		ContainerID: proc.ContainerID,
 		Backend:     backendName,
 		ParentChain: buildParentChainIndexed(proc, processesByPID),
 	}

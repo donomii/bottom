@@ -1,7 +1,3 @@
-//go:build !linux && !darwin && !windows
+//go:build !darwin && !linux && !windows
 
 package main
-
-func readBootID() string {
-	return ""
-}

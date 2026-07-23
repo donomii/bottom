@@ -5,7 +5,7 @@ Apply these values at [https://github.com/donomii/bottom/settings](https://githu
 ## Description
 
 ```text
-A read-only process lifecycle flight recorder: what ran, who spawned it, and how it ended.
+A read-only process watcher that logs what starts and stops.
 ```
 
 ## Homepage

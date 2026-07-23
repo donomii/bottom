@@ -35,7 +35,6 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -tags smoke -run "^TestNativeLifecycleSmoke$" -v
       - run: go vet ./...
-      - run: go run . -test
 
   race:
     runs-on: ubuntu-latest

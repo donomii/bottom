@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes target the latest tagged release and the default branch. Users should run the latest release because process capture and recording validation fixes are not backported indefinitely.
+Security fixes target the latest tagged release and the default branch. Users should run the latest release because process capture fixes are not backported indefinitely.
 
 ## Reporting
 
@@ -12,10 +12,10 @@ If that form is unavailable, open an issue containing no vulnerability details a
 
 ## Project Boundary
 
-Bottom is a read-only process lifecycle recorder. It should not terminate, suspend, inject into, or modify processes.
+Bottom is a read-only process watcher. It should not terminate, suspend, inject into, or modify processes.
 
 Trace mode starts only the command explicitly supplied after `--`; it does not act on unrelated processes or surviving descendants.
 
-## Recording Privacy
+## Log Privacy
 
-Process arguments, paths, user names, service units, and container identifiers can contain sensitive values. New files request owner-only access on Unix. Use repeated `-redact` values for exact text that must not reach the TUI, persistent recording, or Perfetto export. The default preserves exact event data and performs no rewriting.
+Process arguments, paths, and user names can contain sensitive values. Redirected logs preserve observed values, so store and share them accordingly.

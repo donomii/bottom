@@ -1,126 +1,77 @@
-.TH BOTTOM 1 "2026-07-11" "bottom 0.1.2" "User Commands"
+.TH BOTTOM 1 "2026-07-23" "bottom" "User Commands"
 .SH NAME
-bottom \- record process lifecycle events
+bottom \- log process starts and stops
 .SH SYNOPSIS
 .B bottom
 [
 .I options
 ]
 .br
-.B bottom
-.I command
+.B bottom trace
 [
 .I options
 ]
+.B --
+.I command
+[
+.I arguments
+]
 .SH DESCRIPTION
 .B bottom
-is a read-only process lifecycle recorder. It records process starts, executable replacements, stops, restart churn, correlated service restarts, and detected capture gaps. Recordings can be queried, replayed, summarized, compared, and exported as a Perfetto timeline.
+is a read-only process watcher. It writes readable Start, Exec, Stop, and Gap lines to standard output.
 .PP
-With no command, bottom behaves like
-.BR "bottom record" .
-.SH INTERACTIVE TIMELINE
-On an interactive terminal, controls act immediately. Press
-.B p
-to pause,
-.B k
-or
-.B j
-to move through events,
-.B d
-for selected-event details,
-.B c
-to cycle command, context, and executable columns,
-.B s
-to cycle timeline, duration, PID, and command ordering,
-.B x
-to clear search, and
-.B ?
-for help.
-.PP
-Press slash to edit a search. Return applies it, Escape cancels it, Backspace deletes, and Ctrl-U clears the draft. The display adapts to terminal resizing. If raw terminal input is unavailable, the same controls are accepted as line commands followed by Return; use
-.B columns
-and
-.B sort
-for those cycles.
-.PP
-Ctrl-C or Ctrl-D stops bottom itself without acting on any monitored process.
+Redirect standard output with the shell when a log file is wanted.
 .SH COMMANDS
 .TP
-.B record
-Record lifecycle events. This is the default command.
-.TP
 .B watch
-Alias for
-.BR record .
+Watch the process table. This is also the default when no command is supplied.
 .TP
 .B trace
-Start one command directly and record it and its observed descendants. Options must precede an exact
-.B --
-separator.
-.TP
-.B query
-Filter one or more JSONL recordings and render text, JSONL, or CSV.
-.TP
-.B replay
-Replay one or more JSONL recordings with merged timing or through the terminal interface.
-.TP
-.B report
-Summarize sessions, event kinds, gaps, failures, process groups, ancestry, and lifetimes across recordings.
-.TP
-.B compare
-Compare process groups, ancestry, failures, counts, and lifetimes in two JSONL recordings.
+Start one command directly and watch it and its observed descendants.
 .TP
 .B version
 Print version, source commit, and build date.
 .TP
 .B completion
-Write fish completions to standard output. Save the output as
-.IR ~/.config/fish/completions/bottom.fish .
+Write fish completions to standard output.
 .SH OPTIONS
-Every option has a documented default and usage description. Run
+Run
 .B bottom -h
-for recording options or
-.B bottom command -h
-for command-specific options.
+or
+.B bottom trace -h
+for the complete option list and defaults.
 .PP
-The
-.B -input
-option may be repeated up to 64 times for query, replay, and report. Events are merged by time, sequence, and input order. Without this option, those commands read
-.IR bottom.jsonl .
+.B -tui
+explicitly selects the interactive display instead of the readable event log.
 .PP
-The
+.B -ppid
+includes the parent PID in readable process event lines.
+.PP
 .B -backend
-option defaults to auto. Native choices are
+defaults to auto. Native choices are
 .BR linux-proc-connector ,
 .BR windows-etw ,
 and
-.BR macos-endpoint-security ;
+.BR macos-endpoint-security .
 .B poll
-selects native process-table polling directly. Auto records a capture gap and falls back to polling when a platform event source is unavailable.
+selects process-table polling.
+.SH OUTPUT
+The default log format is:
 .PP
-.SH RECORDING FORMATS
-Text output is intended for terminals. JSONL and CSV contain versioned session, event, and gap records. JSONL is the canonical format for queries, replay, reports, and comparisons.
-.SH FILES
-.TP
-.I bottom.jsonl
-Default JSONL recording path for query, replay, and report.
-.TP
-.I bottom-trace.jsonl
-Default trace recording path.
-.TP
-.I ~/.config/fish/completions/bottom.fish
-Fish completion installation path.
+.nf
+Start: PID: command
+Exec: PID: command
+Stop: PID: command
+.fi
+.PP
+With
+.BR -ppid ,
+process lines use
+.B "Start: PID (ppid PARENT_PID): command"
+and the corresponding Exec and Stop forms.
 .SH SECURITY
-bottom observes processes but does not act on them. New recording files request owner-only access. Use repeated
-.B -redact
-options to replace exact sensitive values before recording.
-.PP
-The macOS Endpoint Security backend requires Apple's
-.B com.apple.developer.endpoint-security.client
-entitlement, an entitled signature, Full Disk Access, and the privilege required by the installed macOS release. Release archives include
-.I docs/endpoint-security.md
-and
-.I packaging/macos/bottom.entitlements
-with the signing procedure. Auto mode falls back to polling when those requirements are absent.
+bottom observes processes but does not act on them. Trace starts only the command supplied after
+.BR -- .
 .SH SEE ALSO
-.BR ps (1)
+.BR ps (1),
+.BR top (1)

@@ -8,9 +8,9 @@ import (
 	"unicode/utf8"
 )
 
-func TestTUIRecorderPauseSearchDetailsAndCoverage(t *testing.T) {
+func TestTUIPauseSearchDetailsAndCoverage(t *testing.T) {
 	var output bytes.Buffer
-	recorder := NewTUIRecorder(&output)
+	recorder := NewTUI(&output)
 	first := Event{Kind: EventStart, Time: time.Unix(1, 0), PID: 1, Command: "alpha task", Exe: "/bin/alpha", Backend: BackendPoll}
 	if err := recorder.Write(first); err != nil {
 		t.Fatalf("write first tui event: %v", err)
@@ -49,17 +49,9 @@ func TestSanitizeTerminalTextEscapesControlSequences(t *testing.T) {
 	}
 }
 
-func TestTUIProcessGroupsKeepSemanticContext(t *testing.T) {
-	first := tuiProcessGroup(Event{Exe: "/bin/worker", ParentPID: 1, UID: "1000", SystemdUnit: "one.service"})
-	second := tuiProcessGroup(Event{Exe: "/bin/worker", ParentPID: 2, UID: "1000", SystemdUnit: "two.service"})
-	if first == second || !strings.Contains(first, "parent=1") || !strings.Contains(second, "unit=two.service") {
-		t.Fatalf("expected distinct semantic process groups, received first=%q second=%q", first, second)
-	}
-}
-
 func TestTUIImmediateKeysEditSearchAndCycleViews(t *testing.T) {
 	var output bytes.Buffer
-	recorder := NewTUIRecorder(&output)
+	recorder := NewTUI(&output)
 	recorder.handleKey('/')
 	for _, key := range "worker" {
 		recorder.handleKey(key)
@@ -80,7 +72,7 @@ func TestTUIImmediateKeysEditSearchAndCycleViews(t *testing.T) {
 }
 
 func TestTUISortsEventsWithoutChangingStoredOrder(t *testing.T) {
-	recorder := NewTUIRecorder(&bytes.Buffer{})
+	recorder := NewTUI(&bytes.Buffer{})
 	recorder.events = []Event{
 		{Kind: EventStop, PID: 2, Command: "short", DurationMillis: 10},
 		{Kind: EventStop, PID: 1, Command: "long", DurationMillis: 50},
@@ -93,11 +85,11 @@ func TestTUISortsEventsWithoutChangingStoredOrder(t *testing.T) {
 }
 
 func TestTUIAdaptsVisibleRowsAndCommandWidth(t *testing.T) {
-	recorder := NewTUIRecorder(&bytes.Buffer{})
+	recorder := NewTUI(&bytes.Buffer{})
 	recorder.width = 60
 	recorder.height = 18
-	if limit := recorder.visibleEventLimit(); limit != 3 {
-		t.Fatalf("expected compact terminal to show three events, received %d", limit)
+	if limit := recorder.visibleEventLimit(); limit != 5 {
+		t.Fatalf("expected compact terminal to show five events, received %d", limit)
 	}
 	line := recorder.eventLine(Event{Kind: EventStart, Command: strings.Repeat("x", 80)})
 	if utf8.RuneCountInString(line) > recorder.width {
@@ -107,7 +99,7 @@ func TestTUIAdaptsVisibleRowsAndCommandWidth(t *testing.T) {
 
 func TestTUIControlKeyStopsItsOwnRunContext(t *testing.T) {
 	stops := 0
-	recorder := newTUIRecorder(&bytes.Buffer{}, func() { stops++ })
+	recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
 	recorder.handleKey(0x03)
 	recorder.handleKey(0x04)
 	if stops != 1 || recorder.status != "stopping" {

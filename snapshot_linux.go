@@ -56,16 +56,12 @@ func readLinuxProcess(pid int, capturedAt time.Time, clock linuxProcessClock) (P
 	exe := readLinuxLink(pid, "exe")
 	cwd := readLinuxLink(pid, "cwd")
 	owner, uid := readLinuxIdentity(pid)
-	cgroup, systemdUnit, containerID := readLinuxCgroup(pid)
 	id := processID(pid, stat.startToken)
 	startedAt := clock.processStartedAt(stat.startToken, capturedAt)
 	proc := capturedProcess(id, pid, stat.parentPID, command, exe, cwd, owner, startedAt, capturedAt)
 	proc.UID = uid
 	proc.TTY = readLinuxTTY(pid, stat.tty)
 	proc.Session = stat.session
-	proc.Cgroup = cgroup
-	proc.SystemdUnit = systemdUnit
-	proc.ContainerID = containerID
 	return proc, nil
 }
 
@@ -191,60 +187,4 @@ func readLinuxTTY(pid int, ttyNumber string) string {
 		return ttyNumber
 	}
 	return ""
-}
-
-func readLinuxCgroup(pid int) (string, string, string) {
-	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cgroup"))
-	if err != nil {
-		return "", "", ""
-	}
-	cgroup := ""
-	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.SplitN(line, ":", 3)
-		if len(fields) != 3 || fields[2] == "" {
-			continue
-		}
-		if cgroup == "" || fields[0] == "0" {
-			cgroup = fields[2]
-		}
-		if fields[0] == "0" {
-			break
-		}
-	}
-	return cgroup, systemdUnitFromCgroup(cgroup), containerIDFromCgroup(cgroup)
-}
-
-func systemdUnitFromCgroup(cgroup string) string {
-	parts := strings.Split(cgroup, "/")
-	for index := len(parts) - 1; index >= 0; index-- {
-		part := parts[index]
-		if strings.HasSuffix(part, ".service") || strings.HasSuffix(part, ".scope") || strings.HasSuffix(part, ".slice") {
-			return part
-		}
-	}
-	return ""
-}
-
-func containerIDFromCgroup(cgroup string) string {
-	for _, part := range strings.Split(cgroup, "/") {
-		candidate := strings.TrimSuffix(part, ".scope")
-		for _, prefix := range []string{"docker-", "cri-containerd-", "crio-", "libpod-"} {
-			candidate = strings.TrimPrefix(candidate, prefix)
-		}
-		if len(candidate) == 64 && isLowerHex(candidate) {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func isLowerHex(text string) bool {
-	for _, character := range text {
-		if character < '0' || character > '9' {
-			if character < 'a' || character > 'f' {
-				return false
-			}
-		}
-	}
-	return text != ""
 }
