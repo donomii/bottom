@@ -180,14 +180,14 @@ func (recorder *TUI) handleKey(key rune) {
 			recorder.search = ""
 			recorder.searchDraft = ""
 			recorder.scroll = 0
-			recorder.status = "search cleared"
+			recorder.status = ""
 		case 'c':
 			recorder.columns = (recorder.columns + 1) % 3
-			recorder.status = "columns: " + recorder.columnName()
+			recorder.status = ""
 		case 's':
 			recorder.sortMode = (recorder.sortMode + 1) % 4
 			recorder.scroll = 0
-			recorder.status = "sort: " + recorder.sortName()
+			recorder.status = ""
 		case 0x03, 0x04:
 			recorder.status = "stopping"
 			if recorder.stop != nil {
@@ -205,11 +205,11 @@ func (recorder *TUI) handleSearchKey(key rune) {
 		recorder.search = recorder.searchDraft
 		recorder.searching = false
 		recorder.scroll = 0
-		recorder.status = fmt.Sprintf("search applied: %q", recorder.search)
+		recorder.status = ""
 	case 0x1b:
 		recorder.searchDraft = recorder.search
 		recorder.searching = false
-		recorder.status = "search unchanged"
+		recorder.status = ""
 	case 0x7f, '\b':
 		characters := []rune(recorder.searchDraft)
 		if len(characters) > 0 {
@@ -303,11 +303,11 @@ func (recorder *TUI) handleCommand(command string) {
 		recorder.scroll = 0
 	case trimmed == "columns":
 		recorder.columns = (recorder.columns + 1) % 3
-		recorder.status = "columns: " + recorder.columnName()
+		recorder.status = ""
 	case trimmed == "sort":
 		recorder.sortMode = (recorder.sortMode + 1) % 4
 		recorder.scroll = 0
-		recorder.status = "sort: " + recorder.sortName()
+		recorder.status = ""
 	case strings.HasPrefix(trimmed, "/"):
 		recorder.search = strings.TrimPrefix(trimmed, "/")
 		recorder.scroll = 0
@@ -319,11 +319,7 @@ func (recorder *TUI) handleCommand(command string) {
 
 func (recorder *TUI) togglePause() {
 	recorder.paused = !recorder.paused
-	if recorder.paused {
-		recorder.status = "timeline paused"
-	} else {
-		recorder.status = "timeline resumed"
-	}
+	recorder.status = ""
 }
 
 func (recorder *TUI) moveOlder() {
@@ -360,13 +356,8 @@ func (recorder *TUI) renderLocked() string {
 		recorder.entered = true
 	}
 	builder.WriteString("\033[H\033[2J")
-	builder.WriteString("bottom process watch\n")
-	search := recorder.search
-	if recorder.searching {
-		search = recorder.searchDraft + "_"
-	}
-	status := fmt.Sprintf("backend=%s coverage_gaps=%d paused=%t search=%q scroll=%d columns=%s sort=%s", sanitizeTerminalText(valueOrDash(recorder.backend)), recorder.gapCount, recorder.paused, search, recorder.scroll, recorder.displayColumnName(), recorder.sortName())
-	builder.WriteString(truncate(status, recorder.width))
+	builder.WriteString("bottom - live process activity\n")
+	builder.WriteString(truncate(recorder.statusLine(), recorder.width))
 	builder.WriteByte('\n')
 	builder.WriteString(truncate(recorder.columnHeader(), recorder.width))
 	builder.WriteByte('\n')
@@ -386,13 +377,51 @@ func (recorder *TUI) renderLocked() string {
 		builder.WriteString("\nKeys: p pause, k/j move, / search, x clear search, d details, c columns, s sort, ? help\n")
 		builder.WriteString("Search: Return apply, Escape cancel, Backspace delete, Ctrl-U clear; Ctrl-C/D stop Bottom\n")
 	} else {
-		builder.WriteString("\nPress ? for controls\n")
+		builder.WriteString("\np pause  k/j navigate  / search  d details  ? help\n")
 	}
 	if recorder.status != "" {
 		builder.WriteString(sanitizeTerminalText(recorder.status))
 		builder.WriteByte('\n')
 	}
 	return builder.String()
+}
+
+func (recorder *TUI) statusLine() string {
+	parts := []string{"LIVE"}
+	if recorder.paused {
+		parts[0] = "PAUSED"
+	}
+	if recorder.backend == "" {
+		parts = append(parts, "waiting for events")
+	} else {
+		parts = append(parts, sanitizeTerminalText(recorder.backend))
+	}
+	parts = append(parts, pluralCount(len(recorder.events), "event"))
+	if recorder.gapCount > 0 {
+		parts = append(parts, pluralCount(recorder.gapCount, "capture gap"))
+	}
+	if recorder.searching {
+		parts = append(parts, "search: "+sanitizeTerminalText(recorder.searchDraft)+"_")
+	} else if recorder.search != "" {
+		parts = append(parts, fmt.Sprintf("filter %q", sanitizeTerminalText(recorder.search)))
+	}
+	if recorder.scroll > 0 {
+		parts = append(parts, pluralCount(recorder.scroll, "event")+" back")
+	}
+	if recorder.columns != tuiColumnsCommand {
+		parts = append(parts, recorder.displayColumnName()+" view")
+	}
+	if recorder.sortMode != tuiSortTimeline {
+		parts = append(parts, "sorted by "+recorder.sortName())
+	}
+	return strings.Join(parts, " • ")
+}
+
+func pluralCount(count int, singular string) string {
+	if count == 1 {
+		return fmt.Sprintf("%d %s", count, singular)
+	}
+	return fmt.Sprintf("%d %ss", count, singular)
 }
 
 func (recorder *TUI) filteredEvents() []Event {

@@ -26,8 +26,26 @@ func TestTUIPauseSearchDetailsAndCoverage(t *testing.T) {
 	recorder.handleCommand("/coverage lost")
 	recorder.handleCommand("d")
 	frame := recorder.render()
-	if !strings.Contains(frame, "coverage_gaps=1") || !strings.Contains(frame, "coverage lost") || !strings.Contains(frame, "Selected event") {
+	if !strings.Contains(frame, "PAUSED") || !strings.Contains(frame, "1 capture gap") || !strings.Contains(frame, `filter "coverage lost"`) || !strings.Contains(frame, "Selected event") {
 		t.Fatalf("expected coverage, search result, and details in frame, received %q", frame)
+	}
+}
+
+func TestTUIStatusLineUsesReadableLabels(t *testing.T) {
+	recorder := NewTUI(&bytes.Buffer{})
+	recorder.events = []Event{{Kind: EventStart, PID: 7, Command: "worker"}}
+	recorder.backend = BackendPoll
+	recorder.searching = true
+	line := recorder.statusLine()
+	for _, expected := range []string{"LIVE", "poll", "1 event", "search: _"} {
+		if !strings.Contains(line, expected) {
+			t.Fatalf("expected status line %q to contain %q", line, expected)
+		}
+	}
+	for _, diagnostic := range []string{"backend=", "coverage_gaps=", "paused=", "search=", "scroll=", "columns=", "sort="} {
+		if strings.Contains(line, diagnostic) {
+			t.Fatalf("expected readable status line without %q, received %q", diagnostic, line)
+		}
 	}
 }
 

@@ -60,7 +60,7 @@ Native sources subscribe before their initial snapshot, report sequence or queue
 
 ## TUI behavior
 
-The TUI is used only when `-tui` is explicitly supplied. It retains at most 2048 recent events and supports pause, older/newer navigation, editable search, details, column selection, and sorting. Ctrl-C or Ctrl-D stops Bottom itself without acting on observed processes.
+The TUI is used only when `-tui` is explicitly supplied. Its status bar uses readable state labels and omits inactive search, navigation, view, and sorting states. It retains at most 2048 recent events and supports pause, older/newer navigation, editable search, details, column selection, and sorting. Ctrl-C or Ctrl-D stops Bottom itself without acting on observed processes.
 
 ## Errors
 
