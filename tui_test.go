@@ -26,8 +26,11 @@ func TestTUIPauseSearchDetailsAndCoverage(t *testing.T) {
 	recorder.handleCommand("/coverage lost")
 	recorder.handleCommand("d")
 	frame := recorder.render()
-	if !strings.Contains(frame, "PAUSED") || !strings.Contains(frame, "1 capture gap") || !strings.Contains(frame, `filter "coverage lost"`) || !strings.Contains(frame, "Selected event") {
+	if !strings.Contains(frame, "PAUSED") || !strings.Contains(frame, `filter "coverage lost"`) || !strings.Contains(frame, "coverage lost") || !strings.Contains(frame, "Selected event") {
 		t.Fatalf("expected coverage, search result, and details in frame, received %q", frame)
+	}
+	if strings.Contains(frame, "bottom - live process activity") || strings.Contains(frame, "capture gap") {
+		t.Fatalf("expected frame without redundant title and gap count, received %q", frame)
 	}
 }
 
@@ -37,10 +40,13 @@ func TestTUIStatusLineUsesReadableLabels(t *testing.T) {
 	recorder.backend = BackendPoll
 	recorder.searching = true
 	line := recorder.statusLine()
-	for _, expected := range []string{"LIVE", "poll", "1 event", "search: _"} {
+	for _, expected := range []string{"poll", "1 event", "search: _"} {
 		if !strings.Contains(line, expected) {
 			t.Fatalf("expected status line %q to contain %q", line, expected)
 		}
+	}
+	if strings.Contains(line, "LIVE") {
+		t.Fatalf("expected status line without a live label, received %q", line)
 	}
 	for _, diagnostic := range []string{"backend=", "coverage_gaps=", "paused=", "search=", "scroll=", "columns=", "sort="} {
 		if strings.Contains(line, diagnostic) {
@@ -115,12 +121,40 @@ func TestTUIAdaptsVisibleRowsAndCommandWidth(t *testing.T) {
 	}
 }
 
-func TestTUIControlKeyStopsItsOwnRunContext(t *testing.T) {
+func TestTUIQuitKeysStopImmediatelyFromSearch(t *testing.T) {
+	for _, key := range []rune{'q', 0x03, 0x04} {
+		stops := 0
+		recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
+		recorder.searching = true
+		recorder.searchDraft = "worker"
+		recorder.handleKey(key)
+		if stops != 1 || recorder.status != "stopping" {
+			t.Fatalf("expected key %q to stop the TUI immediately, received stops=%d status=%q", key, stops, recorder.status)
+		}
+	}
+}
+
+func TestTUIEscapeCancelsSearchAndQuitsOutsideSearch(t *testing.T) {
 	stops := 0
 	recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
-	recorder.handleKey(0x03)
-	recorder.handleKey(0x04)
+	recorder.search = "existing"
+	recorder.searching = true
+	recorder.searchDraft = "unfinished"
+	recorder.handleKey(0x1b)
+	if stops != 0 || recorder.searching || recorder.searchDraft != "existing" {
+		t.Fatalf("expected Escape to cancel search without stopping, received stops=%d searching=%t draft=%q", stops, recorder.searching, recorder.searchDraft)
+	}
+	recorder.handleKey(0x1b)
 	if stops != 1 || recorder.status != "stopping" {
-		t.Fatalf("expected one TUI stop request, received stops=%d status=%q", stops, recorder.status)
+		t.Fatalf("expected Escape outside search to stop the TUI, received stops=%d status=%q", stops, recorder.status)
+	}
+}
+
+func TestTUIQuitCommandStopsImmediately(t *testing.T) {
+	stops := 0
+	recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
+	recorder.handleCommand("q")
+	if stops != 1 || recorder.status != "stopping" {
+		t.Fatalf("expected q command to stop the TUI immediately, received stops=%d status=%q", stops, recorder.status)
 	}
 }

@@ -45,7 +45,6 @@ type TUI struct {
 	search      string
 	detail      bool
 	help        bool
-	gapCount    int
 	backend     string
 	status      string
 	interactive bool
@@ -104,9 +103,6 @@ func (recorder *TUI) Write(event Event) error {
 	if event.Backend != "" {
 		recorder.backend = event.Backend
 	}
-	if event.Kind == EventGap {
-		recorder.gapCount++
-	}
 	recorder.events = append(recorder.events, event)
 	if len(recorder.events) > tuiEventLimit {
 		recorder.events = append([]Event(nil), recorder.events[len(recorder.events)-tuiEventLimit:]...)
@@ -159,6 +155,15 @@ func (recorder *TUI) handleKey(key rune) {
 	if recorder.closed {
 		return
 	}
+	if key == 0x1b && recorder.searching {
+		recorder.handleSearchKey(key)
+		_ = recorder.writeFrameLocked()
+		return
+	}
+	if key == 0x1b || key == 'q' || key == 0x03 || key == 0x04 {
+		recorder.requestStop()
+		return
+	}
 	if recorder.searching {
 		recorder.handleSearchKey(key)
 	} else {
@@ -188,12 +193,6 @@ func (recorder *TUI) handleKey(key rune) {
 			recorder.sortMode = (recorder.sortMode + 1) % 4
 			recorder.scroll = 0
 			recorder.status = ""
-		case 0x03, 0x04:
-			recorder.status = "stopping"
-			if recorder.stop != nil {
-				recorder.stop()
-				recorder.stop = nil
-			}
 		}
 	}
 	_ = recorder.writeFrameLocked()
@@ -286,6 +285,10 @@ func (recorder *TUI) handleCommand(command string) {
 		return
 	}
 	trimmed := strings.TrimSpace(command)
+	if trimmed == "q" || trimmed == "quit" {
+		recorder.requestStop()
+		return
+	}
 	switch {
 	case trimmed == "p":
 		recorder.togglePause()
@@ -315,6 +318,14 @@ func (recorder *TUI) handleCommand(command string) {
 		recorder.status = fmt.Sprintf("unknown command %q; enter ? for help", trimmed)
 	}
 	_ = recorder.writeFrameLocked()
+}
+
+func (recorder *TUI) requestStop() {
+	recorder.status = "stopping"
+	if recorder.stop != nil {
+		recorder.stop()
+		recorder.stop = nil
+	}
 }
 
 func (recorder *TUI) togglePause() {
@@ -356,7 +367,6 @@ func (recorder *TUI) renderLocked() string {
 		recorder.entered = true
 	}
 	builder.WriteString("\033[H\033[2J")
-	builder.WriteString("bottom - live process activity\n")
 	builder.WriteString(truncate(recorder.statusLine(), recorder.width))
 	builder.WriteByte('\n')
 	builder.WriteString(truncate(recorder.columnHeader(), recorder.width))
@@ -374,10 +384,10 @@ func (recorder *TUI) renderLocked() string {
 		builder.WriteByte('\n')
 	}
 	if recorder.help {
-		builder.WriteString("\nKeys: p pause, k/j move, / search, x clear search, d details, c columns, s sort, ? help\n")
-		builder.WriteString("Search: Return apply, Escape cancel, Backspace delete, Ctrl-U clear; Ctrl-C/D stop Bottom\n")
+		builder.WriteString("\nKeys: p pause, k/j move, / search, x clear search, d details, c columns, s sort, ? help, Esc/q quit\n")
+		builder.WriteString("Search: Return apply, Escape cancel, Backspace delete, Ctrl-U clear; q/Ctrl-C/Ctrl-D quit\n")
 	} else {
-		builder.WriteString("\np pause  k/j navigate  / search  d details  ? help\n")
+		builder.WriteString("\np pause  k/j navigate  / search  d details  ? help  Esc/q quit\n")
 	}
 	if recorder.status != "" {
 		builder.WriteString(sanitizeTerminalText(recorder.status))
@@ -387,9 +397,9 @@ func (recorder *TUI) renderLocked() string {
 }
 
 func (recorder *TUI) statusLine() string {
-	parts := []string{"LIVE"}
+	parts := []string{}
 	if recorder.paused {
-		parts[0] = "PAUSED"
+		parts = append(parts, "PAUSED")
 	}
 	if recorder.backend == "" {
 		parts = append(parts, "waiting for events")
@@ -397,9 +407,6 @@ func (recorder *TUI) statusLine() string {
 		parts = append(parts, sanitizeTerminalText(recorder.backend))
 	}
 	parts = append(parts, pluralCount(len(recorder.events), "event"))
-	if recorder.gapCount > 0 {
-		parts = append(parts, pluralCount(recorder.gapCount, "capture gap"))
-	}
 	if recorder.searching {
 		parts = append(parts, "search: "+sanitizeTerminalText(recorder.searchDraft)+"_")
 	} else if recorder.search != "" {

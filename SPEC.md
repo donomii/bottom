@@ -60,7 +60,7 @@ Native sources subscribe before their initial snapshot, report sequence or queue
 
 ## TUI behavior
 
-The TUI is used only when `-tui` is explicitly supplied. Its status bar uses readable state labels and omits inactive search, navigation, view, and sorting states. It retains at most 2048 recent events and supports pause, older/newer navigation, editable search, details, column selection, and sorting. Ctrl-C or Ctrl-D stops Bottom itself without acting on observed processes.
+The TUI is used only when `-tui` is explicitly supplied. Its first line shows the process source and event count, followed only by active pause, search, navigation, view, and sorting states. Gap rows explain interruptions directly instead of adding a separate counter. It retains at most 2048 recent events and supports pause, older/newer navigation, editable search, details, column selection, and sorting. Escape cancels active search input and quits outside search. `q`, Ctrl-C, and Ctrl-D immediately stop Bottom from any TUI state without acting on observed processes.
 
 ## Errors
 

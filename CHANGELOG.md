@@ -7,7 +7,8 @@
 - Removed the public `-test` mode; development checks run through `go test`.
 - Added `-ppid` to include each process's parent PID in readable watch and trace output.
 - Added immediate TUI navigation, editable search, adaptive sizing, column layouts, and sortable views with a line-oriented fallback.
-- Replaced the TUI's internal state dump with a readable live status bar and compact control hints.
+- Replaced the TUI's internal state dump with a compact source and event summary plus control hints.
+- Made `q` stop the TUI immediately from any state and Escape cancel active search input or quit outside search.
 - Added natural-exit lifecycle smoke checks for polling on every platform and native Linux and Windows event sources.
 - Corrected Windows ETW private system logger creation to use its own session GUID rather than the reserved kernel logger GUID.
 - Added release-note generation from the matching changelog section, per-archive SPDX JSON SBOMs, and keyless GitHub build provenance.
