@@ -21,18 +21,20 @@ const (
 type EventKind string
 
 type Config struct {
-	Backend      string
-	PollInterval time.Duration
-	ShowPPID     bool
-	TUI          bool
-	ShowVersion  bool
+	Backend       string
+	PollInterval  time.Duration
+	ShowParentExe bool
+	ShowPPID      bool
+	TUI           bool
+	ShowVersion   bool
 }
 
 type TraceConfig struct {
-	PollInterval time.Duration
-	ShowPPID     bool
-	Command      []string
-	Tail         time.Duration
+	PollInterval  time.Duration
+	ShowParentExe bool
+	ShowPPID      bool
+	Command       []string
+	Tail          time.Duration
 }
 
 type Process struct {

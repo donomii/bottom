@@ -28,9 +28,10 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 		}
 	}
 	config := TraceConfig{
-		PollInterval: 10 * time.Millisecond,
-		ShowPPID:     false,
-		Tail:         2 * time.Second,
+		PollInterval:  10 * time.Millisecond,
+		ShowParentExe: false,
+		ShowPPID:      false,
+		Tail:          2 * time.Second,
 	}
 	optionArgs := args
 	if separator >= 0 {
@@ -38,6 +39,7 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 		config.Command = append([]string(nil), args[separator+1:]...)
 	}
 	flagset := flag.NewFlagSet("bottom trace", flag.ContinueOnError)
+	flagset.BoolVar(&config.ShowParentExe, "parent-exe", config.ShowParentExe, "include the parent executable name in readable event lines")
 	flagset.DurationVar(&config.PollInterval, "poll", config.PollInterval, "descendant snapshot interval")
 	flagset.BoolVar(&config.ShowPPID, "ppid", config.ShowPPID, "include the parent PID in readable event lines")
 	flagset.DurationVar(&config.Tail, "tail", config.Tail, "maximum time to observe surviving descendants after the command exits")
@@ -63,11 +65,11 @@ func parseTraceConfig(args []string) (TraceConfig, error) {
 }
 
 func runTrace(ctx context.Context, config TraceConfig) (runErr error) {
-	_, err := ReadProcessSnapshot()
+	initialSnapshot, err := ReadProcessSnapshot()
 	if err != nil {
 		return fmt.Errorf("read initial process snapshot before tracing %q: %w", config.Command[0], err)
 	}
-	writeEvent := func(event Event) error { return writeEventLog(os.Stdout, event, config.ShowPPID) }
+	writeEvent := func(event Event) error { return writeEventLog(os.Stdout, event, config.ShowPPID, config.ShowParentExe) }
 	var commandResults chan traceCommandResult
 	rootReaped := true
 	defer func() {
@@ -89,9 +91,14 @@ func runTrace(ctx context.Context, config TraceConfig) (runErr error) {
 	go waitForTracedCommand(command, commandResults)
 	rootPID := command.Process.Pid
 	root := capturedProcess("trace:"+strconv.Itoa(rootPID)+":"+strconv.FormatInt(startedAt.UnixNano(), 10), rootPID, os.Getpid(), strings.Join(config.Command, " "), config.Command[0], "", "", startedAt, startedAt)
+	rootSnapshot := ProcessSnapshot{root.ID: root}
+	rootParent, rootParentFound := findProcessByPID(initialSnapshot, root.ParentPID)
+	if rootParentFound {
+		rootSnapshot[rootParent.ID] = rootParent
+	}
 	observed := map[int]Process{rootPID: root}
 	tracked := map[int]bool{rootPID: true}
-	startEvent := processStartEventObserved(startedAt, startedAt, BackendTrace, root, ProcessSnapshot{root.ID: root})
+	startEvent := processStartEventObserved(startedAt, startedAt, BackendTrace, root, rootSnapshot)
 	if err := writeEvent(startEvent); err != nil {
 		return err
 	}
@@ -113,7 +120,11 @@ func runTrace(ctx context.Context, config TraceConfig) (runErr error) {
 			rootFinishedAt = result.finishedAt
 			commandErr = result.err
 			if proc, found := observed[rootPID]; found {
-				event := processStopEventObserved(result.finishedAt, result.finishedAt, BackendTrace, proc, snapshotFromProcesses(observed), result.exitCode)
+				stopSnapshot := snapshotFromProcesses(observed)
+				if rootParentFound {
+					stopSnapshot[rootParent.ID] = rootParent
+				}
+				event := processStopEventObserved(result.finishedAt, result.finishedAt, BackendTrace, proc, stopSnapshot, result.exitCode)
 				if err := writeEvent(event); err != nil {
 					return err
 				}

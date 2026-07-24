@@ -1,3 +1,3 @@
 #!/bin/sh
 set -eu
-go run . trace -ppid -- go version
+go run . trace -parent-exe -ppid -- go version

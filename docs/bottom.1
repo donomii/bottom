@@ -44,8 +44,13 @@ for the complete option list and defaults.
 .B -tui
 explicitly selects the interactive display instead of the readable event log.
 .PP
+.B -parent-exe
+includes the parent executable name in a fixed-width column. It is enabled by default in the TUI and disabled by default in readable line output. Use
+.B -parent-exe=false
+to hide it in the TUI.
+.PP
 .B -ppid
-includes the parent PID in readable process event lines.
+includes a parent PID column in readable process event lines and TUI views.
 .PP
 .B -backend
 defaults to auto. Native choices are
@@ -59,16 +64,20 @@ selects process-table polling.
 The default log format is:
 .PP
 .nf
-Start: PID: command
-Exec: PID: command
-Stop: PID: command
+Start: PID      command
+Exec:  PID      command
+Stop:  PID      command
 .fi
 .PP
 With
 .BR -ppid ,
 process lines use
-.B "Start: PID (ppid PARENT_PID): command"
+.B "Start: PID      PARENT_PID      command"
 and the corresponding Exec and Stop forms.
+.PP
+With
+.BR -parent-exe ,
+the fixed-width parent executable name appears after the optional parent PID and before the unbounded command.
 .SH SECURITY
 bottom observes processes but does not act on them. Trace starts only the command supplied after
 .BR -- .

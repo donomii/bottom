@@ -11,11 +11,11 @@ import (
 )
 
 func TestParseTraceConfigRequiresExactCommandBoundary(t *testing.T) {
-	config, err := parseTraceConfig([]string{"-poll", "5ms", "-ppid", "-tail", "1s", "--", "go", "test", "./..."})
+	config, err := parseTraceConfig([]string{"-parent-exe", "-poll", "5ms", "-ppid", "-tail", "1s", "--", "go", "test", "./..."})
 	if err != nil {
 		t.Fatalf("parse trace config: %v", err)
 	}
-	if config.PollInterval != 5*time.Millisecond || !config.ShowPPID || config.Tail != time.Second || strings.Join(config.Command, " ") != "go test ./..." {
+	if config.PollInterval != 5*time.Millisecond || !config.ShowParentExe || !config.ShowPPID || config.Tail != time.Second || strings.Join(config.Command, " ") != "go test ./..." {
 		t.Fatalf("expected parsed trace settings and command, received %#v", config)
 	}
 	if _, err := parseTraceConfig([]string{"go", "test"}); err == nil {

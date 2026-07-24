@@ -31,11 +31,13 @@ var (
 
 var completionOptions = []completionOption{
 	completionValueOption("backend", "Select auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security capture", watchCompletionCommands),
+	completionToggleOption("parent-exe", "Include the parent executable name; enabled by default in the TUI", watchCompletionCommands),
 	completionValueOption("poll", "Set the polling interval", watchCompletionCommands),
 	completionToggleOption("ppid", "Include the parent PID in readable event lines", watchCompletionCommands),
 	completionToggleOption("tui", "Use the interactive terminal timeline", watchCompletionCommands),
 	completionToggleOption("version", "Print build identity", watchCompletionCommands),
 	completionValueOption("poll", "Set the descendant snapshot interval", []string{"trace"}),
+	completionToggleOption("parent-exe", "Include the parent executable name", []string{"trace"}),
 	completionToggleOption("ppid", "Include the parent PID in readable event lines", []string{"trace"}),
 	completionValueOption("tail", "Observe descendants this long after root exit", []string{"trace"}),
 }

@@ -28,10 +28,22 @@ func TestSnapshotDiffAddsParentChain(t *testing.T) {
 	}
 }
 
+func TestPSOutputExcludesOnlyBottomSnapshotCollector(t *testing.T) {
+	output := []byte("100 50 jer /bin/ps -axo pid=,ppid=,user=,command=\n101 50 jer /bin/ps aux\n")
+	snapshot := parsePSOutput(output, time.Unix(1, 0), 100)
+	if _, found := snapshot["100"]; found {
+		t.Fatalf("expected Bottom's ps collector to be excluded")
+	}
+	proc, found := snapshot["101"]
+	if !found || proc.Command != "/bin/ps aux" {
+		t.Fatalf("expected unrelated ps command to remain visible, received %#v", snapshot)
+	}
+}
+
 func TestEventLogWritesCommand(t *testing.T) {
 	var output bytes.Buffer
 	event := Event{Kind: EventStart, Time: time.Unix(1, 0), PID: 9, Command: "sample", Backend: BackendPoll}
-	if err := writeEventLog(&output, event, false); err != nil {
+	if err := writeEventLog(&output, event, false, false); err != nil {
 		t.Fatalf("write text event: %v", err)
 	}
 	if output.String() == "" {
@@ -60,6 +72,9 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	if config.ShowPPID {
 		t.Fatalf("expected parent PID display to be disabled by default")
 	}
+	if config.ShowParentExe {
+		t.Fatalf("expected parent executable display to be disabled in default readable output")
+	}
 	config, err = parseConfig([]string{"-poll", "25ms"})
 	if err != nil {
 		t.Fatalf("parse millisecond poll config: %v", err)
@@ -73,6 +88,27 @@ func TestParseConfigUsesMillisecondPolling(t *testing.T) {
 	}
 	if !config.ShowPPID {
 		t.Fatalf("expected -ppid to enable parent PID display")
+	}
+	config, err = parseConfig([]string{"-tui"})
+	if err != nil {
+		t.Fatalf("parse TUI config: %v", err)
+	}
+	if !config.ShowParentExe {
+		t.Fatalf("expected parent executable display to be enabled by default in the TUI")
+	}
+	config, err = parseConfig([]string{"-tui", "-parent-exe=false"})
+	if err != nil {
+		t.Fatalf("parse TUI without parent executable config: %v", err)
+	}
+	if config.ShowParentExe {
+		t.Fatalf("expected -parent-exe=false to disable the TUI parent executable display")
+	}
+	config, err = parseConfig([]string{"-parent-exe"})
+	if err != nil {
+		t.Fatalf("parse readable parent executable config: %v", err)
+	}
+	if !config.ShowParentExe {
+		t.Fatalf("expected -parent-exe to enable readable parent executable display")
 	}
 }
 
@@ -103,17 +139,63 @@ func TestSelectBackendRejectsPlaceholderNames(t *testing.T) {
 
 func TestStopTextIncludesCommand(t *testing.T) {
 	event := Event{Kind: EventStop, Time: time.Unix(1, 0), PID: 9, Command: "sample-worker", DurationMillis: 83, Backend: BackendPoll}
-	line := formatEventLog(event, false)
-	if line != "Stop: 9: sample-worker" {
+	line := formatEventLog(event, false, false)
+	if line != "Stop:  9        sample-worker" {
 		t.Fatalf("expected readable stop text, received %q", line)
 	}
 }
 
 func TestTextOutputCanIncludeParentPID(t *testing.T) {
 	event := Event{Kind: EventStart, PID: 9, ParentPID: 4, Command: "sample-worker"}
-	line := formatEventLog(event, true)
-	if line != "Start: 9 (ppid 4): sample-worker" {
+	line := formatEventLog(event, true, false)
+	if line != "Start: 9        4        sample-worker" {
 		t.Fatalf("expected readable parent PID text, received %q", line)
+	}
+}
+
+func TestTextOutputCanIncludeParentExecutable(t *testing.T) {
+	event := Event{
+		Kind:        EventStart,
+		PID:         9,
+		Command:     "sample-worker",
+		ParentChain: []ProcessSummary{{PID: 4, Exe: "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"}},
+	}
+	line := formatEventLog(event, false, true)
+	if !strings.Contains(line, "ChatGPT") || !strings.HasSuffix(line, "sample-worker") {
+		t.Fatalf("expected parent executable before the unbounded command, received %q", line)
+	}
+}
+
+func TestTextOutputAlignsFixedColumnsAndLeavesMessageUnbounded(t *testing.T) {
+	command := strings.Repeat("x", 200)
+	events := []Event{
+		{Kind: EventStart, PID: 1, Command: command},
+		{Kind: EventExec, PID: 22, Command: command},
+		{Kind: EventStop, PID: 333, Command: command},
+		{Kind: EventGap, Message: command},
+	}
+	for _, options := range []struct {
+		showPPID      bool
+		showParentExe bool
+	}{
+		{},
+		{showPPID: true},
+		{showParentExe: true},
+		{showPPID: true, showParentExe: true},
+	} {
+		commandColumn := -1
+		for _, event := range events {
+			event.ParentPID = 4
+			event.ParentChain = []ProcessSummary{{PID: 4, Exe: "/bin/parent"}}
+			line := formatEventLog(event, options.showPPID, options.showParentExe)
+			column := strings.Index(line, command)
+			if commandColumn < 0 {
+				commandColumn = column
+			}
+			if column != commandColumn || !strings.HasSuffix(line, command) {
+				t.Fatalf("expected unbounded final column at %d, received %q", commandColumn, line)
+			}
+		}
 	}
 }
 
@@ -152,8 +234,8 @@ func TestTextOutputEscapesParentTerminalControls(t *testing.T) {
 		Command: "worker\x1b[2J",
 		Backend: BackendPoll,
 	}
-	line := formatEventLog(event, false)
-	if strings.ContainsRune(line, '\x1b') || line != `Start: 7: worker\x1b[2J` {
+	line := formatEventLog(event, false, false)
+	if strings.ContainsRune(line, '\x1b') || line != `Start: 7        worker\x1b[2J` {
 		t.Fatalf("expected escaped command in text output, received %q", line)
 	}
 }

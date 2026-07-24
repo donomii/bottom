@@ -11,7 +11,7 @@ func TestFishCompletionIncludesCommandsAndOptions(t *testing.T) {
 	if err := runCompletion(nil, &output); err != nil {
 		t.Fatalf("write fish completion: %v", err)
 	}
-	for _, expected := range []string{"-a 'watch'", "-a 'trace'", "-a 'completion'", "-l backend", "-l poll", "-l ppid", "-l tail", "-l help"} {
+	for _, expected := range []string{"-a 'watch'", "-a 'trace'", "-a 'completion'", "-l backend", "-l parent-exe", "-l poll", "-l ppid", "-l tail", "-l help"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("expected fish completion to contain %q", expected)
 		}

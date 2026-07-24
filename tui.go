@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	tuiVisibleEvents = 18
-	tuiEventLimit    = 2048
+	tuiVisibleEvents  = 18
+	tuiEventLimit     = 2048
+	tuiParentExeWidth = 16
 )
 
 type tuiColumnMode int
@@ -37,40 +38,42 @@ const (
 )
 
 type TUI struct {
-	writer      io.Writer
-	events      []Event
-	mutex       sync.Mutex
-	paused      bool
-	scroll      int
-	search      string
-	detail      bool
-	help        bool
-	backend     string
-	status      string
-	interactive bool
-	entered     bool
-	closed      bool
-	input       *os.File
-	output      *os.File
-	state       *term.State
-	resizeDone  chan struct{}
-	width       int
-	height      int
-	columns     tuiColumnMode
-	sortMode    tuiSortMode
-	searching   bool
-	searchDraft string
-	stop        func()
+	writer        io.Writer
+	events        []Event
+	mutex         sync.Mutex
+	paused        bool
+	scroll        int
+	search        string
+	detail        bool
+	help          bool
+	backend       string
+	status        string
+	interactive   bool
+	entered       bool
+	closed        bool
+	input         *os.File
+	output        *os.File
+	state         *term.State
+	resizeDone    chan struct{}
+	width         int
+	height        int
+	columns       tuiColumnMode
+	sortMode      tuiSortMode
+	showParentExe bool
+	showPPID      bool
+	searching     bool
+	searchDraft   string
+	stop          func()
 }
 
 func NewTUI(writer io.Writer) *TUI {
-	return newTUI(writer, nil)
+	return newTUI(writer, nil, false, true)
 }
 
-func newTUI(writer io.Writer, stop func()) *TUI {
+func newTUI(writer io.Writer, stop func(), showPPID bool, showParentExe bool) *TUI {
 	recorder := &TUI{
 		writer: writer, events: []Event{}, input: os.Stdin,
-		resizeDone: make(chan struct{}), width: 120, height: 32, stop: stop,
+		resizeDone: make(chan struct{}), width: 120, height: 32, stop: stop, showPPID: showPPID, showParentExe: showParentExe,
 	}
 	output, outputIsFile := writer.(*os.File)
 	if outputIsFile && term.IsTerminal(int(output.Fd())) {
@@ -380,7 +383,7 @@ func (recorder *TUI) renderLocked() string {
 	}
 	if recorder.detail && selected != nil {
 		builder.WriteString("\nSelected event\n")
-		builder.WriteString(tuiEventDetail(*selected))
+		builder.WriteString(tuiEventDetail(*selected, recorder.showPPID, recorder.showParentExe))
 		builder.WriteByte('\n')
 	}
 	if recorder.help {
@@ -512,10 +515,17 @@ func (recorder *TUI) displayColumnName() string {
 }
 
 func (recorder *TUI) effectiveColumns() tuiColumnMode {
-	if recorder.columns == tuiColumnsContext && recorder.width < 80 {
+	extraWidth := 0
+	if recorder.showPPID {
+		extraWidth += 9
+	}
+	if recorder.showParentExe {
+		extraWidth += tuiParentExeWidth + 1
+	}
+	if recorder.columns == tuiColumnsContext && recorder.width < 63+extraWidth {
 		return tuiColumnsCommand
 	}
-	if recorder.columns == tuiColumnsExecutable && recorder.width < 100 {
+	if recorder.columns == tuiColumnsExecutable && recorder.width < 83+extraWidth {
 		return tuiColumnsCommand
 	}
 	return recorder.columns
@@ -535,35 +545,58 @@ func (recorder *TUI) sortName() string {
 }
 
 func (recorder *TUI) columnHeader() string {
+	header := fmt.Sprintf("%-15s %-6s %-8s", "time", "kind", "pid")
+	if recorder.showPPID {
+		header += fmt.Sprintf(" %-8s", "ppid")
+	}
+	if recorder.showParentExe {
+		header += fmt.Sprintf(" %-*s", tuiParentExeWidth, "parent")
+	}
 	switch recorder.effectiveColumns() {
 	case tuiColumnsContext:
-		return "time            kind   pid      ppid     context              command"
+		return header + fmt.Sprintf(" %-20s %s", "context", "command")
 	case tuiColumnsExecutable:
-		return "time            kind   pid      user        executable                    command"
+		return header + fmt.Sprintf(" %-11s %-28s %s", "user", "executable", "command")
 	default:
-		return "time            kind   pid      user        command"
+		if recorder.showParentExe {
+			return header + " command"
+		}
+		return header + fmt.Sprintf(" %-11s %s", "user", "command")
 	}
 }
 
 func (recorder *TUI) eventLine(event Event) string {
 	command := tuiEventCommand(event)
 	width := max(20, recorder.width)
+	line := fmt.Sprintf("%-15s %-6s %-8d", event.Time.Format("15:04:05.000"), event.Kind, event.PID)
+	fixed := 15 + 1 + 6 + 1 + 8
+	if recorder.showPPID {
+		line += fmt.Sprintf(" %-8d", event.ParentPID)
+		fixed += 1 + 8
+	}
+	if recorder.showParentExe {
+		line += fmt.Sprintf(" %-*s", tuiParentExeWidth, truncate(sanitizeTerminalText(parentExecutableName(event)), tuiParentExeWidth))
+		fixed += 1 + tuiParentExeWidth
+	}
 	switch recorder.effectiveColumns() {
 	case tuiColumnsContext:
 		context := valueOrDash(event.Cwd)
-		fixed := 15 + 1 + 6 + 1 + 8 + 1 + 8 + 1 + 20 + 1
-		return fmt.Sprintf("%-15s %-6s %-8d %-8d %-20s %s", event.Time.Format("15:04:05.000"), event.Kind, event.PID, event.ParentPID, truncate(sanitizeTerminalText(context), 20), truncate(command, max(10, width-fixed)))
+		line += fmt.Sprintf(" %-20s", truncate(sanitizeTerminalText(context), 20))
+		fixed += 1 + 20
 	case tuiColumnsExecutable:
-		fixed := 15 + 1 + 6 + 1 + 8 + 1 + 11 + 1 + 28 + 1
-		return fmt.Sprintf("%-15s %-6s %-8d %-11s %-28s %s", event.Time.Format("15:04:05.000"), event.Kind, event.PID, truncate(sanitizeTerminalText(valueOrDash(event.User)), 11), truncate(sanitizeTerminalText(valueOrDash(event.Exe)), 28), truncate(command, max(10, width-fixed)))
+		line += fmt.Sprintf(" %-11s %-28s", truncate(sanitizeTerminalText(valueOrDash(event.User)), 11), truncate(sanitizeTerminalText(valueOrDash(event.Exe)), 28))
+		fixed += 1 + 11 + 1 + 28
 	default:
-		fixed := 15 + 1 + 6 + 1 + 8 + 1 + 11 + 1
-		return fmt.Sprintf("%-15s %-6s %-8d %-11s %s", event.Time.Format("15:04:05.000"), event.Kind, event.PID, truncate(sanitizeTerminalText(valueOrDash(event.User)), 11), truncate(command, max(10, width-fixed)))
+		if !recorder.showParentExe {
+			line += fmt.Sprintf(" %-11s", truncate(sanitizeTerminalText(valueOrDash(event.User)), 11))
+			fixed += 1 + 11
+		}
 	}
+	return line + " " + truncate(command, max(1, width-fixed-1))
 }
 
 func tuiEventLine(event Event) string {
-	recorder := &TUI{width: 120, columns: tuiColumnsCommand}
+	recorder := &TUI{width: 120, columns: tuiColumnsCommand, showParentExe: true}
 	return recorder.eventLine(event)
 }
 
@@ -576,8 +609,15 @@ func tuiEventCommand(event Event) string {
 	return command
 }
 
-func tuiEventDetail(event Event) string {
-	return fmt.Sprintf("process=%s parent=%d exe=%q cwd=%q duration=%s backend=%s", sanitizeTerminalText(valueOrDash(event.ProcessID)), event.ParentPID, sanitizeTerminalText(event.Exe), sanitizeTerminalText(event.Cwd), time.Duration(event.DurationMillis)*time.Millisecond, sanitizeTerminalText(valueOrDash(event.Backend)))
+func tuiEventDetail(event Event, showPPID bool, showParentExe bool) string {
+	detail := fmt.Sprintf("process=%s", sanitizeTerminalText(valueOrDash(event.ProcessID)))
+	if showPPID {
+		detail += fmt.Sprintf(" parent=%d", event.ParentPID)
+	}
+	if showParentExe {
+		detail += fmt.Sprintf(" parent_exe=%q", sanitizeTerminalText(parentExecutableName(event)))
+	}
+	return detail + fmt.Sprintf(" exe=%q cwd=%q duration=%s backend=%s", sanitizeTerminalText(event.Exe), sanitizeTerminalText(event.Cwd), time.Duration(event.DurationMillis)*time.Millisecond, sanitizeTerminalText(valueOrDash(event.Backend)))
 }
 
 func valueOrDash(value string) string {

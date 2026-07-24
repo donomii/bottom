@@ -9,6 +9,10 @@
 - Added immediate TUI navigation, editable search, adaptive sizing, column layouts, and sortable views with a line-oriented fallback.
 - Replaced the TUI's internal state dump with a compact source and event summary plus control hints.
 - Made `q` stop the TUI immediately from any state and Escape cancel active search input or quit outside search.
+- Excluded Bottom's own Unix `ps` snapshot process without hiding unrelated `ps` commands.
+- Added optional parent-executable lookup and display, enabled by default in the TUI.
+- Aligned readable output into fixed event, PID, and optional parent-PID columns while leaving the final text unbounded.
+- Applied `-ppid` consistently to every TUI view and detail panel.
 - Added natural-exit lifecycle smoke checks for polling on every platform and native Linux and Windows event sources.
 - Corrected Windows ETW private system logger creation to use its own session GUID rather than the reserved kernel logger GUID.
 - Added release-note generation from the matching changelog section, per-archive SPDX JSON SBOMs, and keyless GitHub build provenance.

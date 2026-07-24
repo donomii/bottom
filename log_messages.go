@@ -6,6 +6,12 @@ import (
 	"log"
 )
 
+const (
+	logKindWidth      = 6
+	logPIDWidth       = 8
+	logParentExeWidth = 24
+)
+
 func logBackendFallback(logger *log.Logger, backend string, err error) {
 	logger.Printf("backend=%s fallback=%s reason=%v", backend, BackendPoll, err)
 }
@@ -21,14 +27,14 @@ func writeWatchStarted(writer io.Writer) error {
 	return nil
 }
 
-func writeEventLog(writer io.Writer, event Event, showPPID bool) error {
-	if _, err := fmt.Fprintln(writer, formatEventLog(event, showPPID)); err != nil {
+func writeEventLog(writer io.Writer, event Event, showPPID bool, showParentExe bool) error {
+	if _, err := fmt.Fprintln(writer, formatEventLog(event, showPPID, showParentExe)); err != nil {
 		return fmt.Errorf("write process event log: %w", err)
 	}
 	return nil
 }
 
-func formatEventLog(event Event, showPPID bool) string {
+func formatEventLog(event Event, showPPID bool, showParentExe bool) string {
 	command := sanitizeTerminalText(event.Command)
 	if command == "" {
 		command = sanitizeTerminalText(event.Exe)
@@ -38,36 +44,50 @@ func formatEventLog(event Event, showPPID bool) string {
 	}
 	switch event.Kind {
 	case EventStart:
-		return formatStartLog(event.PID, event.ParentPID, command, showPPID)
+		return formatStartLog(event.PID, event.ParentPID, parentExecutableName(event), command, showPPID, showParentExe)
 	case EventExec:
-		return formatExecLog(event.PID, event.ParentPID, command, showPPID)
+		return formatExecLog(event.PID, event.ParentPID, parentExecutableName(event), command, showPPID, showParentExe)
 	case EventStop:
-		return formatStopLog(event.PID, event.ParentPID, command, showPPID)
+		return formatStopLog(event.PID, event.ParentPID, parentExecutableName(event), command, showPPID, showParentExe)
 	case EventGap:
-		return formatGapLog(event.Message)
+		return formatGapLog(event.Message, showPPID, showParentExe)
 	default:
-		return formatUnknownEventLog(event.Message)
+		return formatUnknownEventLog(event.Message, showPPID, showParentExe)
 	}
 }
 
-func formatStartLog(pid int, parentPID int, command string, showPPID bool) string {
-	return formatProcessLog("Start", pid, parentPID, command, showPPID)
+func formatStartLog(pid int, parentPID int, parentExe string, command string, showPPID bool, showParentExe bool) string {
+	return formatProcessLog("Start", pid, parentPID, parentExe, command, showPPID, showParentExe)
 }
-func formatExecLog(pid int, parentPID int, command string, showPPID bool) string {
-	return formatProcessLog("Exec", pid, parentPID, command, showPPID)
+func formatExecLog(pid int, parentPID int, parentExe string, command string, showPPID bool, showParentExe bool) string {
+	return formatProcessLog("Exec", pid, parentPID, parentExe, command, showPPID, showParentExe)
 }
-func formatStopLog(pid int, parentPID int, command string, showPPID bool) string {
-	return formatProcessLog("Stop", pid, parentPID, command, showPPID)
+func formatStopLog(pid int, parentPID int, parentExe string, command string, showPPID bool, showParentExe bool) string {
+	return formatProcessLog("Stop", pid, parentPID, parentExe, command, showPPID, showParentExe)
 }
-func formatProcessLog(kind string, pid int, parentPID int, command string, showPPID bool) string {
+func formatProcessLog(kind string, pid int, parentPID int, parentExe string, command string, showPPID bool, showParentExe bool) string {
+	line := fmt.Sprintf("%-*s %-*d", logKindWidth, kind+":", logPIDWidth, pid)
 	if showPPID {
-		return fmt.Sprintf("%s: %d (ppid %d): %s", kind, pid, parentPID, command)
+		line += fmt.Sprintf(" %-*d", logPIDWidth, parentPID)
 	}
-	return fmt.Sprintf("%s: %d: %s", kind, pid, command)
+	if showParentExe {
+		line += fmt.Sprintf(" %-*s", logParentExeWidth, truncate(sanitizeTerminalText(parentExe), logParentExeWidth))
+	}
+	return line + " " + command
 }
-func formatGapLog(message string) string {
-	return fmt.Sprintf("Gap: %s", sanitizeTerminalText(message))
+func formatGapLog(message string, showPPID bool, showParentExe bool) string {
+	return formatMessageLog("Gap", message, showPPID, showParentExe)
 }
-func formatUnknownEventLog(message string) string {
-	return fmt.Sprintf("Event: %s", sanitizeTerminalText(message))
+func formatUnknownEventLog(message string, showPPID bool, showParentExe bool) string {
+	return formatMessageLog("Event", message, showPPID, showParentExe)
+}
+func formatMessageLog(kind string, message string, showPPID bool, showParentExe bool) string {
+	line := fmt.Sprintf("%-*s %-*s", logKindWidth, kind+":", logPIDWidth, "")
+	if showPPID {
+		line += fmt.Sprintf(" %-*s", logPIDWidth, "")
+	}
+	if showParentExe {
+		line += fmt.Sprintf(" %-*s", logParentExeWidth, "")
+	}
+	return line + " " + sanitizeTerminalText(message)
 }

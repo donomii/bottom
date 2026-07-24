@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,12 +22,23 @@ var (
 
 func parseConfig(args []string) (Config, error) {
 	config := Config{
-		Backend:      "auto",
-		PollInterval: 100 * time.Millisecond,
-		ShowPPID:     false,
+		Backend:       "auto",
+		PollInterval:  100 * time.Millisecond,
+		ShowParentExe: false,
+		ShowPPID:      false,
 	}
+	parentExeSet := false
 	flagset := flag.NewFlagSet("bottom", flag.ContinueOnError)
 	flagset.StringVar(&config.Backend, "backend", config.Backend, "process source: auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security")
+	flagset.BoolFunc("parent-exe", "include the parent executable name; enabled by default in the TUI and disabled by default in readable event lines", func(value string) error {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parent-exe must be true or false, received %q", value)
+		}
+		config.ShowParentExe = enabled
+		parentExeSet = true
+		return nil
+	})
 	flagset.DurationVar(&config.PollInterval, "poll", config.PollInterval, "polling interval used by the polling backend and fallback mode")
 	flagset.BoolVar(&config.ShowPPID, "ppid", config.ShowPPID, "include the parent PID in readable event lines")
 	flagset.BoolVar(&config.TUI, "tui", false, "show the interactive terminal timeline instead of the readable event log")
@@ -41,6 +53,9 @@ func parseConfig(args []string) (Config, error) {
 	}
 	if flagset.NArg() != 0 {
 		return Config{}, fmt.Errorf("expected options only, received positional arguments %q", strings.Join(flagset.Args(), " "))
+	}
+	if config.TUI && !parentExeSet {
+		config.ShowParentExe = true
 	}
 	if !validBackendName(config.Backend) {
 		return Config{}, fmt.Errorf("backend must be auto, poll, linux-proc-connector, windows-etw, or macos-endpoint-security, received %q", config.Backend)
@@ -75,7 +90,7 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 	}
 	var tui *TUI
 	if config.TUI {
-		tui = newTUI(os.Stdout, stopRun)
+		tui = newTUI(os.Stdout, stopRun, config.ShowPPID, config.ShowParentExe)
 		defer func() {
 			if err := tui.Close(); runErr == nil && err != nil {
 				runErr = err
@@ -90,7 +105,7 @@ func runWithContext(ctx context.Context, config Config, logger *log.Logger) (run
 		if tui != nil {
 			return tui.Write(event)
 		}
-		return writeEventLog(os.Stdout, event, config.ShowPPID)
+		return writeEventLog(os.Stdout, event, config.ShowPPID, config.ShowParentExe)
 	}
 	if selectionErr != nil {
 		logBackendFallback(logger, config.Backend, selectionErr)

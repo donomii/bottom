@@ -124,7 +124,7 @@ func TestTUIAdaptsVisibleRowsAndCommandWidth(t *testing.T) {
 func TestTUIQuitKeysStopImmediatelyFromSearch(t *testing.T) {
 	for _, key := range []rune{'q', 0x03, 0x04} {
 		stops := 0
-		recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
+		recorder := newTUI(&bytes.Buffer{}, func() { stops++ }, false, true)
 		recorder.searching = true
 		recorder.searchDraft = "worker"
 		recorder.handleKey(key)
@@ -136,7 +136,7 @@ func TestTUIQuitKeysStopImmediatelyFromSearch(t *testing.T) {
 
 func TestTUIEscapeCancelsSearchAndQuitsOutsideSearch(t *testing.T) {
 	stops := 0
-	recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
+	recorder := newTUI(&bytes.Buffer{}, func() { stops++ }, false, true)
 	recorder.search = "existing"
 	recorder.searching = true
 	recorder.searchDraft = "unfinished"
@@ -152,9 +152,39 @@ func TestTUIEscapeCancelsSearchAndQuitsOutsideSearch(t *testing.T) {
 
 func TestTUIQuitCommandStopsImmediately(t *testing.T) {
 	stops := 0
-	recorder := newTUI(&bytes.Buffer{}, func() { stops++ })
+	recorder := newTUI(&bytes.Buffer{}, func() { stops++ }, false, true)
 	recorder.handleCommand("q")
 	if stops != 1 || recorder.status != "stopping" {
 		t.Fatalf("expected q command to stop the TUI immediately, received stops=%d status=%q", stops, recorder.status)
+	}
+}
+
+func TestTUIPPIDColumnFollowsOption(t *testing.T) {
+	event := Event{Kind: EventStart, Time: time.Unix(1, 0), PID: 42, ParentPID: 7, Command: "worker"}
+	withoutPPID := NewTUI(&bytes.Buffer{})
+	if strings.Contains(withoutPPID.columnHeader(), "ppid") || strings.Contains(tuiEventDetail(event, false, true), "parent=") {
+		t.Fatalf("expected TUI parent PID to be hidden without -ppid")
+	}
+	withPPID := newTUI(&bytes.Buffer{}, nil, true, true)
+	if !strings.Contains(withPPID.columnHeader(), "ppid") || !strings.Contains(withPPID.eventLine(event), "42       7") || !strings.Contains(tuiEventDetail(event, true, true), "parent=7") {
+		t.Fatalf("expected TUI parent PID to be visible with -ppid")
+	}
+}
+
+func TestTUIParentExecutableIsShownByDefaultAndCanBeDisabled(t *testing.T) {
+	event := Event{
+		Kind:        EventStart,
+		Time:        time.Unix(1, 0),
+		PID:         42,
+		Command:     "ps",
+		ParentChain: []ProcessSummary{{PID: 7, Exe: "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"}},
+	}
+	withParent := NewTUI(&bytes.Buffer{})
+	if !strings.Contains(withParent.columnHeader(), "parent") || !strings.Contains(withParent.eventLine(event), "ChatGPT") || !strings.Contains(tuiEventDetail(event, false, true), `parent_exe="ChatGPT"`) {
+		t.Fatalf("expected TUI parent executable to be visible by default")
+	}
+	withoutParent := newTUI(&bytes.Buffer{}, nil, false, false)
+	if strings.Contains(withoutParent.columnHeader(), "parent") || strings.Contains(withoutParent.eventLine(event), "ChatGPT") || strings.Contains(tuiEventDetail(event, false, false), "parent_exe=") {
+		t.Fatalf("expected disabled TUI parent executable to be hidden")
 	}
 }
